@@ -9,7 +9,7 @@ license = "MIT"
 nexa-core = { path = "../nexa-core", version = "0.1.0" }
 nexa-renderer-gpu = { path = "../nexa-renderer-gpu", version = "0.1.0" }
 winit = "0.30"
-tokio = { version = "1.0", features = ["rt-multi-thread"] }
+tokio = { version = "1.0", features = ["rt-multi-thread", "macros"] }
 
 [features]
 default = []

@@ -3,7 +3,7 @@ use winit::{
     event_loop::{ControlFlow, EventLoop},
     window::WindowBuilder,
 };
-use nexa_renderer_gpu::{GpuRenderer, SceneNode};
+use nexa_renderer-gpu::{GpuRenderer, SceneNode};
 use std::sync::Arc;
 
 pub fn launch<F>(app: F)
