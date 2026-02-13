@@ -75,3 +75,40 @@ pub struct Component {
     pub scope: Option<crate::runtime::ScopeId>,
     pub parent: Option<NodeId>,
 }
+
+use std::cell::RefCell;
+
+thread_local! {
+    static ACTIVE_ARENA: RefCell<Option<*mut VDomArena>> = RefCell::new(None);
+}
+
+/// Sets the active arena for the current thread.
+/// # Safety
+/// The caller must ensure the pointer is valid for the duration of the closure
+/// and that no other mutable references exist.
+pub unsafe fn set_active_arena<F, R>(arena: &mut VDomArena, f: F) -> R
+where
+    F: FnOnce() -> R,
+{
+    ACTIVE_ARENA.with(|ptr| {
+        *ptr.borrow_mut() = Some(arena as *mut _);
+        let res = f();
+        *ptr.borrow_mut() = None;
+        res
+    })
+}
+
+pub fn get_active_arena<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut VDomArena) -> R,
+{
+    ACTIVE_ARENA.with(|ptr| {
+        if let Some(raw) = *ptr.borrow() {
+            // SAFE: We assume set_active_arena upholds validity and non-aliasing logic
+            // during the scope of its execution.
+            unsafe { f(&mut *raw) }
+        } else {
+            panic!("No active VDOM arena! Are you calling rsx! outside a Runtime context?");
+        }
+    })
+}
