@@ -6,11 +6,11 @@ authors = ["Nexa Team"]
 license = "MIT"
 
 [dependencies]
-nexa-core = { path = "../nexa-core", version = "0.1.0" }
+[lib]
+proc-macro = true
+
+[dependencies]
 quote = "1.0"
 syn = { version = "2.0", features = ["full"] }
 proc-macro2 = "1.0"
-
-[lib]
-proc-macro = false # For now just scaffolding, logic usually in separate crate or here if proc-macro=true
-# Since we are implementing "scaffolding" and "runtime support", we keep it as lib.
+# nexa-core dependency removed to avoid circular dependency (rsx macro generates code that refers to nexa-core, but doesn't link to it)
