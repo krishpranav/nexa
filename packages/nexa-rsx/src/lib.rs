@@ -8,10 +8,10 @@ use syn::{
 #[proc_macro]
 pub fn rsx(input: TokenStream) -> TokenStream {
     let call = parse_macro_input!(input as RsxCall);
-    call.to_token_stream().into()
+    call.root.to_token_stream().into()
 }
 
-pub struct RsxCall {
+struct RsxCall {
     pub root: RsxNode,
 }
 
@@ -25,7 +25,7 @@ impl Parse for RsxCall {
     }
 }
 
-pub enum RsxNode {
+enum RsxNode {
     Element(Element),
     Text(syn::LitStr),
     // Block(syn::Block), // expressions like { foo }
@@ -62,7 +62,7 @@ impl ToTokens for RsxNode {
     }
 }
 
-pub struct Element {
+struct Element {
     pub name: syn::Ident,
     pub children: Vec<RsxNode>,
     // attributes...

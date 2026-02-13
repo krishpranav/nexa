@@ -1,5 +1,5 @@
 use futures::stream::Stream;
-use nexa_core::vdom::{Attribute, Element, NodeId, Text, VDomArena, VirtualNode};
+use nexa_core::vdom::{NodeId, VDomArena, VirtualNode};
 use std::collections::VecDeque;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -9,10 +9,10 @@ pub struct SsrStream<'a> {
     // Stack of nodes to visit.
     // We strictly walk: Start Tag -> Children -> End Tag.
     // To handle "End Tag", we can push a "Close(tag_name)" marker.
-    stack: VecDeque<RenderOp<'a>>,
+    stack: VecDeque<RenderOp>,
 }
 
-enum RenderOp<'a> {
+enum RenderOp {
     Visit(NodeId),
     Close(&'static str),
 }
@@ -131,4 +131,9 @@ impl<'a> Renderer<'a> {
     pub fn render_to_stream(&self, root_id: NodeId) -> SsrStream<'a> {
         SsrStream::new(self.arena, root_id)
     }
+}
+
+pub enum RenderMode {
+    ToString,
+    ToStream,
 }
