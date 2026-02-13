@@ -1,0 +1,16 @@
+[package]
+name = "nexa-ssr"
+version = "0.1.0"
+edition = "2024"
+authors = ["Nexa Team"]
+license = "MIT"
+
+[dependencies]
+nexa-core = { path = "../nexa-core", version = "0.1.0" }
+futures = "0.3"
+tokio = { version = "1.0", features = ["io-util"] }
+thiserror = "1.0"
+tracing = "0.1"
+
+[features]
+default = []
