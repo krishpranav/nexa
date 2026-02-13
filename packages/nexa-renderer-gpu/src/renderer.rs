@@ -1,6 +1,5 @@
 use std::sync::Arc;
     Instance, Surface, Device, Queue, SurfaceConfiguration,
-    RenderPipeline,
 };
 use winit::window::Window;
 
