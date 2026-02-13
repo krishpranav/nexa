@@ -1,0 +1,28 @@
+[package]
+name = "nexa-fullstack"
+version = "0.1.0"
+edition = "2024"
+authors = ["Nexa Team"]
+license = "MIT"
+
+[dependencies]
+nexa-fullstack-macro = { path = "../nexa-fullstack-macro", version = "0.1.0" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+futures = "0.3"
+thiserror = "1.0"
+once_cell = "1.19"
+
+# Server-side
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+axum = { version = "0.7", optional = true }
+tokio = { version = "1.0", features = ["full"], optional = true }
+
+# Client-side
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+gloo-net = "0.4"
+wasm-bindgen = "0.2"
+
+[features]
+default = []
+ssr = ["dep:axum", "dep:tokio"]
