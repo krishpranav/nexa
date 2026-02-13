@@ -1,65 +1,24 @@
-use slotmap::new_key_type;
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
+use slotmap::{new_key_type, SlotMap};
+use smallvec::SmallVec;
+use std::borrow::Cow;
 
 new_key_type! {
     pub struct NodeId;
 }
 
-/// A node in the Virtual DOM.
-#[derive(Debug, Clone)]
-pub enum VNode {
-    Element(VElement),
-    Text(VText),
-    Fragment(VFragment),
-    Component(VComponent),
-    Placeholder(VPlaceholder),
-}
-
-#[derive(Debug, Clone)]
-pub struct VElement {
-    pub tag: String,
-    pub id: Option<NodeId>,                  // Mounted ID
-    pub attributes: HashMap<String, String>, // Simplified for now
-    pub children: Vec<NodeId>,
-    pub listeners: Vec<String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct VText {
-    pub text: String,
-    pub id: Option<NodeId>,
-}
-
-#[derive(Debug, Clone)]
-pub struct VFragment {
-    pub children: Vec<NodeId>,
-}
-
-#[derive(Debug, Clone)]
-pub struct VComponent {
-    pub name: String,
-    // Props would go here, often generic or Any
-    // scope_id: Option<ScopeId>,
-}
-
-#[derive(Debug, Clone)]
-pub struct VPlaceholder {
-    pub id: Option<NodeId>,
-}
-
-/// The Arena storing all VNodes.
 pub struct VDomArena {
-    pub nodes: slotmap::SlotMap<NodeId, VNode>,
+    pub nodes: SlotMap<NodeId, VNode>,
 }
 
 impl VDomArena {
     pub fn new() -> Self {
         Self {
-            nodes: slotmap::SlotMap::with_key(),
+            nodes: SlotMap::with_key(),
         }
     }
 
-    pub fn alloc(&mut self, node: VNode) -> NodeId {
+    pub fn insert(&mut self, node: VNode) -> NodeId {
         self.nodes.insert(node)
     }
 
@@ -70,4 +29,38 @@ impl VDomArena {
     pub fn get_mut(&mut self, id: NodeId) -> Option<&mut VNode> {
         self.nodes.get_mut(id)
     }
+}
+
+pub enum VNode {
+    Element(ElementNode),
+    Text(TextNode),
+    Fragment(FragmentNode),
+    Component(ComponentNode),
+    Placeholder,
+}
+
+pub struct ElementNode {
+    pub tag: Cow<'static, str>,
+    pub attributes: FxHashMap<Cow<'static, str>, String>,
+    pub listeners: FxHashMap<Cow<'static, str>, NodeId>, // Listener ID or handler
+    pub children: SmallVec<[NodeId; 4]>,
+    pub parent: Option<NodeId>,
+}
+
+pub struct TextNode {
+    pub text: String,
+    pub parent: Option<NodeId>,
+}
+
+pub struct FragmentNode {
+    pub children: SmallVec<[NodeId; 4]>,
+    pub parent: Option<NodeId>,
+}
+
+pub struct ComponentNode {
+    pub name: Cow<'static, str>,
+    pub scope_id: Option<crate::runtime::ScopeId>, // Scope associated with this component
+    pub props: Box<dyn std::any::Any>,             // Simplified props for now
+    pub children: Option<NodeId>,                  // Rendered output
+    pub parent: Option<NodeId>,
 }

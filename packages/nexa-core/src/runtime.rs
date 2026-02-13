@@ -60,6 +60,7 @@ impl Runtime {
                 // Warning: direct lookup in same map while inserting is tricky if borrowing.
                 // SlotMap insert_with_key usually gives just key.
                 // We'll fix height later or use 0 for now.
+                // To do this properly we need to get parent first, data, then insert.
                 0
             } else {
                 0
@@ -79,14 +80,5 @@ impl Runtime {
 
     pub fn get_scope(&self, id: ScopeId) -> Option<&Scope> {
         self.scopes.get(id)
-    }
-
-    pub fn run_scope(&mut self, scope_id: ScopeId) {
-        if let Some(scope) = self.scopes.get(scope_id) {
-            scope.reset_hook_idx();
-            // Here we would run the component function.
-            // Since we don't have the component function stored yet (it's usually in rsx or properties),
-            // this is the scaffolding.
-        }
     }
 }
