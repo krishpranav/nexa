@@ -1,0 +1,28 @@
+[package]
+name = "nexa-core"
+version = "0.1.0"
+edition = "2024"
+authors = ["Nexa Team"]
+description = "Core runtime and VDOM for the Nexa framework"
+license = "MIT"
+
+[dependencies]
+slotmap = { version = "1.0", features = ["serde"] }
+smallvec = { version = "1.11", features = ["serde"] }
+slab = "0.4"
+rustc-hash = "1.1"
+tracing = "0.1"
+thiserror = "1.0"
+futures = "0.3"
+serde = { version = "1.0", features = ["derive"] }
+
+# We will add nexa-signals and nexa-scheduler later once they are implemented to avoid circular dev-deps if any, 
+# or just add them now if we are sure.
+# For now, let's keep core independent if possible, or minimally coupled.
+# Actually, Runtime usually owns the scheduler.
+# nexa-scheduler = { path = "../nexa-scheduler", version = "0.1.0" } 
+# nexa-signals = { path = "../nexa-signals", version = "0.1.0" }
+
+[features]
+default = []
+serialize = ["slotmap/serde", "smallvec/serde"]
