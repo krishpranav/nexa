@@ -25,7 +25,7 @@ impl WebApp {
             .expect("root element not found");
 
         // Initialize runtime
-        let mut app = WebApp::new();
+        let mut _app = WebApp::new();
 
         // In a real app, we'd mount the initial VNode tree here.
         // For scaffolding, we expose the entry point.
