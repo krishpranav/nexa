@@ -1,66 +1,77 @@
-use rustc_hash::FxHashMap;
 use slotmap::{new_key_type, SlotMap};
 use smallvec::SmallVec;
-use std::borrow::Cow;
 
 new_key_type! {
     pub struct NodeId;
 }
 
+#[derive(Default)]
+pub struct GenericArena<T> {
+    items: SlotMap<NodeId, T>,
+}
+
+impl<T> GenericArena<T> {
+    pub fn new() -> Self {
+        Self {
+            items: SlotMap::with_key(),
+        }
+    }
+    pub fn insert(&mut self, item: T) -> NodeId {
+        self.items.insert(item)
+    }
+    pub fn get(&self, id: NodeId) -> Option<&T> {
+        self.items.get(id)
+    }
+    pub fn get_mut(&mut self, id: NodeId) -> Option<&mut T> {
+        self.items.get_mut(id)
+    }
+}
+
 pub struct VDomArena {
-    pub nodes: SlotMap<NodeId, VNode>,
+    pub nodes: GenericArena<VirtualNode>,
 }
 
 impl VDomArena {
     pub fn new() -> Self {
         Self {
-            nodes: SlotMap::with_key(),
+            nodes: GenericArena::new(),
         }
-    }
-
-    pub fn insert(&mut self, node: VNode) -> NodeId {
-        self.nodes.insert(node)
-    }
-
-    pub fn get(&self, id: NodeId) -> Option<&VNode> {
-        self.nodes.get(id)
-    }
-
-    pub fn get_mut(&mut self, id: NodeId) -> Option<&mut VNode> {
-        self.nodes.get_mut(id)
     }
 }
 
-pub enum VNode {
-    Element(ElementNode),
-    Text(TextNode),
-    Fragment(FragmentNode),
-    Component(ComponentNode),
+pub enum VirtualNode {
+    Element(Element),
+    Text(Text),
+    Fragment(Fragment),
+    Component(Component),
     Placeholder,
 }
 
-pub struct ElementNode {
-    pub tag: Cow<'static, str>,
-    pub attributes: FxHashMap<Cow<'static, str>, String>,
-    pub listeners: FxHashMap<Cow<'static, str>, NodeId>, // Listener ID or handler
+pub struct Element {
+    pub tag: &'static str,
+    pub props: SmallVec<[Attribute; 4]>,
     pub children: SmallVec<[NodeId; 4]>,
     pub parent: Option<NodeId>,
 }
 
-pub struct TextNode {
+pub struct Attribute {
+    pub name: &'static str,
+    pub value: String, // Simplified for now, could be Any
+}
+
+pub struct Text {
     pub text: String,
     pub parent: Option<NodeId>,
 }
 
-pub struct FragmentNode {
+pub struct Fragment {
     pub children: SmallVec<[NodeId; 4]>,
     pub parent: Option<NodeId>,
 }
 
-pub struct ComponentNode {
-    pub name: Cow<'static, str>,
-    pub scope_id: Option<crate::runtime::ScopeId>, // Scope associated with this component
-    pub props: Box<dyn std::any::Any>,             // Simplified props for now
-    pub children: Option<NodeId>,                  // Rendered output
+pub struct Component {
+    pub name: &'static str,
+    pub render_fn: fn() -> NodeId, // Placeholder for component function
+    pub scope: Option<crate::runtime::ScopeId>,
     pub parent: Option<NodeId>,
 }
