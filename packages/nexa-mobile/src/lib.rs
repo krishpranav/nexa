@@ -20,7 +20,6 @@ where
     // On mobile we don't start a tokio runtime in the same way usually, 
     // but for wgpu initialization we need async executor.
     // We'll assume some platform executor or block_on for init.
-    // NOTE: On Android, blocking main thread is bad, but for init it might be okay or offloaded.
     
     let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
     let mut renderer = runtime.block_on(async {
