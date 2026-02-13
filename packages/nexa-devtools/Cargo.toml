@@ -1,0 +1,16 @@
+[package]
+name = "nexa-devtools"
+version = "0.1.0"
+edition = "2024"
+authors = ["Nexa Team"]
+license = "MIT"
+
+[dependencies]
+nexa-core = { path = "../nexa-core", version = "0.1.0" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tracing = "0.1"
+futures = "0.3"
+
+[features]
+default = []
