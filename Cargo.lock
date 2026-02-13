@@ -1069,10 +1069,10 @@ dependencies = [
 name = "nexa-core"
 version = "0.1.0"
 dependencies = [
+ "bumpalo",
  "futures",
  "rustc-hash",
  "serde",
- "slab",
  "slotmap",
  "smallvec",
  "thiserror",
@@ -1106,6 +1106,7 @@ version = "0.1.0"
 dependencies = [
  "nexa-core",
  "nexa-renderer-gpu",
+ "tokio",
  "winit",
 ]
 
@@ -1138,7 +1139,6 @@ dependencies = [
  "rustc-hash",
  "slotmap",
  "smallvec",
- "thiserror",
  "tracing",
 ]
 
@@ -1146,11 +1146,8 @@ dependencies = [
 name = "nexa-signals"
 version = "0.1.0"
 dependencies = [
- "rustc-hash",
  "slotmap",
  "smallvec",
- "thiserror",
- "tracing",
 ]
 
 [[package]]
@@ -1159,15 +1156,13 @@ version = "0.1.0"
 dependencies = [
  "futures",
  "nexa-core",
- "thiserror",
- "tokio",
- "tracing",
 ]
 
 [[package]]
 name = "nexa-web"
 version = "0.1.0"
 dependencies = [
+ "js-sys",
  "nexa-core",
  "wasm-bindgen",
  "web-sys",
@@ -1794,7 +1789,6 @@ version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bdd58c3c93c3d278ca835519292445cb4b0d4dc59ccfdf7ceadaab3f8aeb4038"
 dependencies = [
- "serde",
  "version_check",
 ]
 
@@ -1803,9 +1797,6 @@ name = "smallvec"
 version = "1.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
-dependencies = [
- "serde",
-]
 
 [[package]]
 name = "smithay-client-toolkit"

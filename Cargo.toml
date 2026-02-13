@@ -1,61 +1,50 @@
 [workspace]
 resolver = "2"
 members = [
-    "packages/nexa-core",
-    "packages/nexa-signals",
-    "packages/nexa-scheduler",
-    "packages/nexa-rsx",
-    "packages/nexa-ssr",
-    "packages/nexa-renderer-gpu",
-    "packages/nexa-web",
-    "packages/nexa-desktop",
-    "packages/nexa-mobile",
-    "packages/nexa-cli",
-    "packages/nexa-devtools",
+    "packages/*"
 ]
 
 [workspace.package]
+edition = "2024"
 version = "0.1.0"
 authors = ["Nexa Team"]
-edition = "2024"
 license = "MIT"
-repository = "https://github.com/nexa-rs/nexa"
-homepage = "https://nexa.rs"
+repository = "https://github.com/nexa-framework/nexa"
 
 [workspace.dependencies]
-nexa-core = { path = "packages/nexa-core", version = "0.1.0" }
-nexa-signals = { path = "packages/nexa-signals", version = "0.1.0" }
-nexa-scheduler = { path = "packages/nexa-scheduler", version = "0.1.0" }
-nexa-rsx = { path = "packages/nexa-rsx", version = "0.1.0" }
-nexa-ssr = { path = "packages/nexa-ssr", version = "0.1.0" }
-nexa-renderer-gpu = { path = "packages/nexa-renderer-gpu", version = "0.1.0" }
-nexa-web = { path = "packages/nexa-web", version = "0.1.0" }
-nexa-desktop = { path = "packages/nexa-desktop", version = "0.1.0" }
-nexa-mobile = { path = "packages/nexa-mobile", version = "0.1.0" }
-nexa-cli = { path = "packages/nexa-cli", version = "0.1.0" }
-nexa-devtools = { path = "packages/nexa-devtools", version = "0.1.0" }
+# Core dependencies
+slotmap = "1.0"
+smallvec = "1.0"
+bumpalo = "3.14"
+rustc-hash = "1.1"
 
-# External dependencies
+# Async & Runtime
+tokio = { version = "1.0", features = ["full"] }
+futures = "0.3"
+
+# Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-tokio = { version = "1.0", features = ["full"] }
-wgpu = "0.20"
+
+# Web
+wasm-bindgen = "0.2"
+web-sys = "0.3"
+js-sys = "0.3"
+
+# Desktop & Mobile
 winit = "0.30"
+wgpu = "0.20"
+raw-window-handle = "0.6"
+
+# CLI & Tracing
+clap = { version = "4.4", features = ["derive"] }
+tracing = "0.1"
 thiserror = "1.0"
 anyhow = "1.0"
-smallvec = "1.11"
-slotmap = "1.0"
-rustc-hash = "1.1"
-tracing = "0.1"
-tracing-subscriber = "0.3"
-futures = "0.3"
-slab = "0.4.9"
-
-[profile.dev]
-opt-level = 0
-debug = true
 
 [profile.release]
 opt-level = 3
 lto = true
 codegen-units = 1
+panic = "abort"
+strip = true
