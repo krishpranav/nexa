@@ -1,4 +1,5 @@
 use winit::window::Window;
+// use wgpu::util::DeviceExt;
 
 pub struct GpuRenderer {
     surface: wgpu::Surface<'static>,
@@ -40,6 +41,7 @@ impl GpuRenderer {
                     label: None,
                     required_features: wgpu::Features::empty(),
                     required_limits: wgpu::Limits::default(),
+                    memory_hints: Default::default(),
                 },
                 None, // Trace path
             )
