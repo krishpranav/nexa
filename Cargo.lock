@@ -1071,6 +1071,8 @@ version = "0.1.0"
 dependencies = [
  "bumpalo",
  "futures",
+ "nexa-scheduler",
+ "nexa-signals",
  "rustc-hash",
  "serde",
  "slotmap",

@@ -11,12 +11,14 @@ pub struct GraphNode {
 
 pub struct Graph {
     pub nodes: SlotMap<SignalId, GraphNode>,
+    pub dirty_nodes: std::collections::HashSet<SignalId>,
 }
 
 impl Graph {
     pub fn new() -> Self {
         Self {
             nodes: SlotMap::with_key(),
+            dirty_nodes: std::collections::HashSet::new(),
         }
     }
 
@@ -35,15 +37,11 @@ impl Graph {
     }
 
     pub fn mark_dirty(&mut self, id: SignalId) {
-        // Queue to scheduler
-        // Since Scheduler integration is later, we just print or no-op
-        // tracing::trace!("Dirty: {:?}", id);
+        self.dirty_nodes.insert(id);
+    }
 
-        // Naive propagation for now (if we had recursively dirty)
-        if let Some(node) = self.nodes.get(id) {
-            for &_sub in &node.subscribers {
-                // mark_dirty(sub); // recurse
-            }
-        }
+    pub fn take_dirty(&mut self) -> Vec<SignalId> {
+        let dirty: Vec<_> = self.dirty_nodes.drain().collect();
+        dirty
     }
 }
