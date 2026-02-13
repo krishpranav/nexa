@@ -1,5 +1,7 @@
 use std::sync::Arc;
+use wgpu::{
     Instance, Surface, Device, Queue, SurfaceConfiguration,
+    RenderPipeline,
 };
 use winit::window::Window;
 

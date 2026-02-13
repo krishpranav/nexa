@@ -1172,10 +1172,11 @@ dependencies = [
 name = "nexa-desktop"
 version = "0.1.0"
 dependencies = [
+ "futures",
  "nexa-core",
  "nexa-renderer-gpu",
- "tokio",
- "winit 0.30.12",
+ "wgpu",
+ "winit 0.29.15",
 ]
 
 [[package]]
