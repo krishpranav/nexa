@@ -1,0 +1,14 @@
+[package]
+name = "nexa-mobile"
+version = "0.1.0"
+edition = "2024"
+authors = ["Nexa Team"]
+license = "MIT"
+
+[dependencies]
+nexa-core = { path = "../nexa-core", version = "0.1.0" }
+nexa-renderer-gpu = { path = "../nexa-renderer-gpu", version = "0.1.0" }
+winit = "0.30"
+
+[features]
+default = []
