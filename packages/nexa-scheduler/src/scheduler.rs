@@ -1,75 +1,119 @@
-use nexa_signals::{NodeId, ReactiveNode, SignalGraph};
-use smallvec::SmallVec;
+use nexa_signals::{Graph, SignalId};
+use rustc_hash::{FxHashMap, FxHashSet};
+use std::collections::VecDeque;
 
 pub struct Scheduler {
-    pub dirty_queue: SmallVec<[NodeId; 16]>,
+    dirty_queue: Vec<SignalId>,
 }
 
 impl Scheduler {
     pub fn new() -> Self {
         Self {
-            dirty_queue: SmallVec::new(),
+            dirty_queue: Vec::new(),
         }
     }
 
-    pub fn mark_dirty(&mut self, id: NodeId) {
-        if !self.dirty_queue.contains(&id) {
+    pub fn schedule(&mut self, dirty: impl IntoIterator<Item = SignalId>) {
+        for id in dirty {
+            // Avoid duplicates in queue?
+            // For stability + perf, maybe check logic, but for now simple push.
+            // Run() handles deductive logic.
             self.dirty_queue.push(id);
         }
     }
 
-    pub fn run(&mut self, graph: &mut SignalGraph) {
+    pub fn run(&mut self, graph: &Graph) -> Vec<SignalId> {
         if self.dirty_queue.is_empty() {
-            return;
+            return Vec::new();
         }
 
-        // 1. Coalesce dirty nodes
-        let mut processing_queue = self.dirty_queue.clone();
+        // 1. Discover reachable subgraph (Transitive Closure of Dirty Set)
+        // We use a set to track visited/subgraph nodes for O(1) lookup.
+        let mut subgraph_nodes = FxHashSet::default();
+        let mut stack = Vec::new();
+
+        // Seed with initial dirty queue
+        for &id in &self.dirty_queue {
+            if !subgraph_nodes.contains(&id) {
+                subgraph_nodes.insert(id);
+                stack.push(id);
+            }
+        }
         self.dirty_queue.clear();
 
-        // 2. Propagate dirty state to discover all affected nodes
-        // (BFS to find all downstream subscribers)
+        // Exploration to find all affected nodes
         let mut i = 0;
-        while i < processing_queue.len() {
-            let id = processing_queue[i];
+        while i < stack.len() {
+            let u = stack[i];
             i += 1;
 
-            if let Some(node) = graph.nodes.get(id) {
-                let subscribers = match node {
-                    ReactiveNode::Signal(s) => &s.subscribers,
-                    ReactiveNode::Computed(c) => &c.subscribers,
-                    // Effects don't have subscribers usually
-                    ReactiveNode::Effect(_) => continue,
-                };
-
-                for &sub in subscribers {
-                    if !processing_queue.contains(&sub) {
-                        processing_queue.push(sub);
+            if let Some(node) = graph.nodes.get(u) {
+                for &v in &node.subscribers {
+                    if !subgraph_nodes.contains(&v) {
+                        subgraph_nodes.insert(v);
+                        stack.push(v);
                     }
                 }
             }
         }
 
-        // 3. Topological Sort (by Depth)
-        // Since we maintained depth in graph insertion, we can just sort by depth.
-        // Lower depth executes first? Actually, signals (depth 0) change, then computed (depth 1), etc.
-        // Yes, stable sort by depth ascending.
-        processing_queue.sort_by_key(|&id| match graph.nodes.get(id) {
-            Some(ReactiveNode::Signal(_)) => 0,
-            Some(ReactiveNode::Computed(c)) => c.depth,
-            Some(ReactiveNode::Effect(e)) => e.depth,
-            None => 0,
-        });
+        // `stack` now contains all nodes in the subgraph in BFS/Topo-ish discovery order.
+        let nodes_to_process = stack;
 
-        let nodes_to_run = processing_queue;
+        // 2. Compute In-Degrees associated *only* with edges within the subgraph
+        let mut in_degrees = FxHashMap::default();
 
-        // Step 4 — Batched Execution
-        for node_id in nodes_to_run {
-            // Need to borrow graph mutably to update values, but we also needed it immutably for sort.
-            // Split bororws or just re-lookup.
-            // In a real impl, we'd run the update function.
-            // For now, this is the structural implementation.
-            tracing::trace!("Running update for {:?}", node_id);
+        // Initialize degrees
+        for &id in &nodes_to_process {
+            in_degrees.insert(id, 0);
         }
+
+        for &u in &nodes_to_process {
+            if let Some(node) = graph.nodes.get(u) {
+                for &v in &node.subscribers {
+                    if subgraph_nodes.contains(&v) {
+                        *in_degrees.get_mut(&v).unwrap() += 1;
+                    }
+                }
+            }
+        }
+
+        // 3. Kahn's Algorithm
+        let mut queue = VecDeque::new();
+
+        // Initialize queue with 0 in-degree nodes
+        // Iterate over `nodes_to_process` to maintain deterministic discovery order
+        // rather than iterating the HashMap.
+        for &id in &nodes_to_process {
+            if let Some(&deg) = in_degrees.get(&id) {
+                if deg == 0 {
+                    queue.push_back(id);
+                }
+            }
+        }
+
+        let mut sorted_order = Vec::with_capacity(nodes_to_process.len());
+
+        while let Some(u) = queue.pop_front() {
+            sorted_order.push(u);
+
+            if let Some(node) = graph.nodes.get(u) {
+                for &v in &node.subscribers {
+                    // Only process edges within subgraph
+                    if let Some(deg) = in_degrees.get_mut(&v) {
+                        *deg -= 1;
+                        if *deg == 0 {
+                            queue.push_back(v);
+                        }
+                    }
+                }
+            }
+        }
+
+        // If sorted_order.len() != nodes_to_process.len(), we have a cycle.
+        // For now, we return what we have (or panic).
+        // Since requirements imply deterministic output, we return result.
+
+        sorted_order
     }
 }
