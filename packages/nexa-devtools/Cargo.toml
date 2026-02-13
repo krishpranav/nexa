@@ -6,11 +6,13 @@ authors = ["Nexa Team"]
 license = "MIT"
 
 [dependencies]
-nexa-core = { path = "../nexa-core", version = "0.1.0" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-tracing = "0.1"
-futures = "0.3"
+# In a real scenario, nexa-devtools would likely depend on nexa-core to access types,
+# but to avoid circular deps if core uses devtools, we might use traits or generic types.
+# However, user says "Expose runtime inspection API", implying we might be part of core or wrapping it.
+# Let's assume nexa-devtools defines the protocol and types, and nexa-core implements them or pushes data to it.
+# Or better, nexa-devtools provides a `DevTools` struct that nexa-core can populate.
 
 [features]
 default = []
