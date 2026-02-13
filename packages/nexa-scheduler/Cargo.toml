@@ -1,0 +1,17 @@
+[package]
+name = "nexa-scheduler"
+version = "0.1.0"
+edition = "2024"
+authors = ["Nexa Team"]
+license = "MIT"
+
+[dependencies]
+nexa-signals = { path = "../nexa-signals", version = "0.1.0" }
+slotmap = { version = "1.0", features = ["serde"] }
+smallvec = { version = "1.11", features = ["serde"] }
+tracing = "0.1"
+thiserror = "1.0"
+rustc-hash = "1.1"
+
+[features]
+default = []
