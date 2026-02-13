@@ -1,5 +1,6 @@
+pub mod context;
 pub mod graph;
-pub mod nodes;
+pub mod signal;
 
-pub use graph::SignalGraph;
-pub use nodes::{NodeId, ReactiveNode};
+pub use graph::{Graph, SignalId};
+pub use signal::{signal, Signal};

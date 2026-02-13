@@ -1,89 +1,49 @@
-use crate::nodes::{ComputedNode, EffectNode, NodeId, ReactiveNode, SignalNode};
-use slotmap::SlotMap;
+use slotmap::{new_key_type, SlotMap};
 use smallvec::SmallVec;
 
-pub struct SignalGraph {
-    pub nodes: SlotMap<NodeId, ReactiveNode>,
-    // Value storage would be here or external.
-    // Implementing purely graph topology for now as per "Reactive graph" requirement.
+new_key_type! {
+    pub struct SignalId;
 }
 
-impl SignalGraph {
+pub struct GraphNode {
+    pub subscribers: SmallVec<[SignalId; 4]>,
+}
+
+pub struct Graph {
+    pub nodes: SlotMap<SignalId, GraphNode>,
+}
+
+impl Graph {
     pub fn new() -> Self {
         Self {
             nodes: SlotMap::with_key(),
         }
     }
 
-    pub fn insert_signal(&mut self) -> NodeId {
-        self.nodes.insert(ReactiveNode::Signal(SignalNode {
+    pub fn allocate(&mut self) -> SignalId {
+        self.nodes.insert(GraphNode {
             subscribers: SmallVec::new(),
-        }))
+        })
     }
 
-    pub fn insert_computed(&mut self, dependencies: SmallVec<[NodeId; 4]>) -> NodeId {
-        let mut depth = 0;
-        for &dep in &dependencies {
-            if let Some(node) = self.nodes.get(dep) {
-                let d = match node {
-                    ReactiveNode::Signal(_) => 0,
-                    ReactiveNode::Computed(c) => c.depth,
-                    ReactiveNode::Effect(e) => e.depth, // Effects usually don't have dependents so 0?
-                };
-                depth = std::cmp::max(depth, d);
+    pub fn add_dependency(&mut self, subscriber: SignalId, dependency: SignalId) {
+        if let Some(node) = self.nodes.get_mut(dependency) {
+            if !node.subscribers.contains(&subscriber) {
+                node.subscribers.push(subscriber);
             }
         }
-
-        // Depth = max(deps) + 1
-        let depth = depth + 1;
-
-        let id = self.nodes.insert(ReactiveNode::Computed(ComputedNode {
-            dependencies: dependencies.clone(),
-            subscribers: SmallVec::new(),
-            depth,
-        }));
-
-        // Link dependencies to this node
-        for &dep in &dependencies {
-            if let Some(node) = self.nodes.get_mut(dep) {
-                match node {
-                    ReactiveNode::Signal(s) => s.subscribers.push(id),
-                    ReactiveNode::Computed(c) => c.subscribers.push(id),
-                    _ => {}
-                }
-            }
-        }
-        id
     }
 
-    pub fn insert_effect(&mut self, dependencies: SmallVec<[NodeId; 4]>) -> NodeId {
-        let mut depth = 0;
-        for &dep in &dependencies {
-            if let Some(node) = self.nodes.get(dep) {
-                let d = match node {
-                    ReactiveNode::Signal(_) => 0,
-                    ReactiveNode::Computed(c) => c.depth,
-                    ReactiveNode::Effect(e) => e.depth,
-                };
-                depth = std::cmp::max(depth, d);
+    pub fn mark_dirty(&mut self, id: SignalId) {
+        // Queue to scheduler
+        // Since Scheduler integration is later, we just print or no-op
+        // tracing::trace!("Dirty: {:?}", id);
+
+        // Naive propagation for now (if we had recursively dirty)
+        if let Some(node) = self.nodes.get(id) {
+            for &_sub in &node.subscribers {
+                // mark_dirty(sub); // recurse
             }
         }
-        let depth = depth + 1;
-
-        let id = self.nodes.insert(ReactiveNode::Effect(EffectNode {
-            dependencies: dependencies.clone(),
-            depth,
-        }));
-
-        for &dep in &dependencies {
-            if let Some(node) = self.nodes.get_mut(dep) {
-                match node {
-                    ReactiveNode::Signal(s) => s.subscribers.push(id),
-                    ReactiveNode::Computed(c) => c.subscribers.push(id),
-                    _ => {}
-                }
-            }
-        }
-        id
     }
 }
