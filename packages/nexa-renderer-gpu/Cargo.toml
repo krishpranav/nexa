@@ -6,12 +6,11 @@ authors = ["Nexa Team"]
 license = "MIT"
 
 [dependencies]
-wgpu = "0.20"
-winit = "0.30"
+wgpu = "22.0" # Latest stable or compatible
+winit = { version = "0.29", features = ["rwh_05"] }
 futures = "0.3"
 tracing = "0.1"
 thiserror = "1.0"
-# nexa-core = { path = "../nexa-core", version = "0.1.0" } # If needed for scene conversion
 
 [features]
 default = []
