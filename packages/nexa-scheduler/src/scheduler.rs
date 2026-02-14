@@ -1,69 +1,101 @@
-use nexa_signals::{Graph, SignalId};
+use nexa_signals::{Graph, NodeType, SignalId};
 use rustc_hash::{FxHashMap, FxHashSet};
-use std::collections::VecDeque;
+use std::cmp::Ordering;
+use std::collections::BinaryHeap;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum PriorityTier {
+    Signal = 0,
+    Effect = 1,
+    Render = 2,
+}
+
+#[derive(Default, Debug, Clone)]
+pub struct SchedulingStats {
+    pub nodes_processed: u64,
+    pub edges_traversed: u64,
+    pub batch_count: u64,
+}
+
+/// A wrapper for SignalId to implement custom ordering in BinaryHeap
+#[derive(PartialEq, Eq)]
+struct ScheduledNode {
+    id: SignalId,
+    tier: PriorityTier,
+    depth: u32,
+}
+
+impl Ord for ScheduledNode {
+    fn cmp(&self, other: &Self) -> Ordering {
+        // We want a MIN-heap for tie-breaking by (Tier, Depth, Id)
+        // BinaryHeap is a MAX-heap by default, so we reverse the comparisons
+        other
+            .tier
+            .cmp(&self.tier)
+            .then_with(|| other.depth.cmp(&self.depth))
+            .then_with(|| other.id.cmp(&self.id))
+    }
+}
+
+impl PartialOrd for ScheduledNode {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
 
 pub struct Scheduler {
-    dirty_queue: Vec<SignalId>,
+    dirty_set: FxHashSet<SignalId>,
+    pub stats: SchedulingStats,
 }
 
 impl Scheduler {
     pub fn new() -> Self {
         Self {
-            dirty_queue: Vec::new(),
+            dirty_set: FxHashSet::default(),
+            stats: SchedulingStats::default(),
         }
     }
 
     pub fn schedule(&mut self, dirty: impl IntoIterator<Item = SignalId>) {
         for id in dirty {
-            // Avoid duplicates in queue?
-            // For stability + perf, maybe check logic, but for now simple push.
-            // Run() handles deductive logic.
-            self.dirty_queue.push(id);
+            self.dirty_set.insert(id);
         }
     }
 
     pub fn run(&mut self, graph: &Graph) -> Vec<SignalId> {
-        if self.dirty_queue.is_empty() {
+        if self.dirty_set.is_empty() {
             return Vec::new();
         }
 
-        // 1. Discover reachable subgraph (Transitive Closure of Dirty Set)
-        // We use a set to track visited/subgraph nodes for O(1) lookup.
+        self.stats.batch_count += 1;
+
+        // 1. Transitive Closure (Iterative discovery)
         let mut subgraph_nodes = FxHashSet::default();
-        let mut stack = Vec::new();
+        let mut stack: Vec<SignalId> = self.dirty_set.drain().collect();
 
-        // Seed with initial dirty queue
-        for &id in &self.dirty_queue {
-            if !subgraph_nodes.contains(&id) {
-                subgraph_nodes.insert(id);
-                stack.push(id);
-            }
+        for &id in &stack {
+            subgraph_nodes.insert(id);
         }
-        self.dirty_queue.clear();
 
-        // Exploration to find all affected nodes
         let mut i = 0;
         while i < stack.len() {
             let u = stack[i];
             i += 1;
+            self.stats.nodes_processed += 1;
 
             if let Some(node) = graph.nodes.get(u) {
                 for &v in &node.subscribers {
-                    if !subgraph_nodes.contains(&v) {
-                        subgraph_nodes.insert(v);
+                    self.stats.edges_traversed += 1;
+                    if subgraph_nodes.insert(v) {
                         stack.push(v);
                     }
                 }
             }
         }
 
-        // `stack` now contains all nodes in the subgraph in BFS/Topo-ish discovery order.
         let nodes_to_process = stack;
-
-        // 2. Compute In-Degrees associated *only* with edges within the subgraph
         let mut in_degrees = FxHashMap::default();
 
-        // Initialize degrees
         for &id in &nodes_to_process {
             in_degrees.insert(id, 0);
         }
@@ -78,41 +110,57 @@ impl Scheduler {
             }
         }
 
-        // 3. Kahn's Algorithm
-        let mut queue = VecDeque::new();
+        // 2. Stable Kahn's Algorithm using BinaryHeap
+        let mut heap = BinaryHeap::new();
 
-        // Initialize queue with 0 in-degree nodes
-        // Iterate over `nodes_to_process` to maintain deterministic discovery order
-        // rather than iterating the HashMap.
         for &id in &nodes_to_process {
             if let Some(&deg) = in_degrees.get(&id) {
                 if deg == 0 {
-                    queue.push_back(id);
+                    if let Some(node) = graph.nodes.get(id) {
+                        let tier = match node.node_type {
+                            NodeType::Signal | NodeType::Memo => PriorityTier::Signal,
+                            NodeType::Effect => PriorityTier::Effect,
+                        };
+                        heap.push(ScheduledNode {
+                            id,
+                            tier,
+                            depth: node.depth,
+                        });
+                    }
                 }
             }
         }
 
         let mut sorted_order = Vec::with_capacity(nodes_to_process.len());
 
-        while let Some(u) = queue.pop_front() {
-            sorted_order.push(u);
+        while let Some(ScheduledNode { id, .. }) = heap.pop() {
+            sorted_order.push(id);
 
-            if let Some(node) = graph.nodes.get(u) {
+            if let Some(node) = graph.nodes.get(id) {
                 for &v in &node.subscribers {
-                    // Only process edges within subgraph
                     if let Some(deg) = in_degrees.get_mut(&v) {
                         *deg -= 1;
                         if *deg == 0 {
-                            queue.push_back(v);
+                            if let Some(v_node) = graph.nodes.get(v) {
+                                let tier = match v_node.node_type {
+                                    NodeType::Signal | NodeType::Memo => PriorityTier::Signal,
+                                    NodeType::Effect => PriorityTier::Effect,
+                                };
+                                heap.push(ScheduledNode {
+                                    id: v,
+                                    tier,
+                                    depth: v_node.depth,
+                                });
+                            }
                         }
                     }
                 }
             }
         }
 
-        // If sorted_order.len() != nodes_to_process.len(), we have a cycle.
-        // For now, we return what we have (or panic).
-        // Since requirements imply deterministic output, we return result.
+        if sorted_order.len() != nodes_to_process.len() {
+            panic!("Cycle detected in signals graph during scheduling!");
+        }
 
         sorted_order
     }
