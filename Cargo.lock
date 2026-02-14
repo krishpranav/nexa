@@ -2542,13 +2542,16 @@ version = "0.1.0"
 dependencies = [
  "bumpalo",
  "futures",
+ "nexa-router",
  "nexa-scheduler",
  "nexa-signals",
+ "nexa-ssr",
  "rustc-hash",
  "serde",
  "slotmap",
  "smallvec",
  "thiserror",
+ "tokio",
  "tracing",
 ]
 
