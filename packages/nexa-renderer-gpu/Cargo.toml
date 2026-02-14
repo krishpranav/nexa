@@ -11,6 +11,8 @@ winit = { version = "0.29", features = ["rwh_05"] }
 futures = "0.3"
 tracing = "0.1"
 thiserror = "1.0"
+bytemuck = { version = "1.14", features = ["derive"] }
+glam = "0.24"
 
 [features]
 default = []
