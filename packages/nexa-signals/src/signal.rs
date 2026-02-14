@@ -2,32 +2,47 @@ use crate::SignalId;
 use crate::context::{allocate_node, mark_dirty, pop_observer, push_observer, track_read};
 use crate::graph::NodeType;
 use std::cell::UnsafeCell;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
+
+pub struct SignalInner<T> {
+    pub value: UnsafeCell<T>,
+}
 
 pub struct Signal<T> {
     pub id: SignalId,
-    pub value: UnsafeCell<T>,
+    pub inner: Rc<SignalInner<T>>,
+}
+
+impl<T> Clone for Signal<T> {
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id,
+            inner: self.inner.clone(),
+        }
+    }
 }
 
 impl<T: PartialEq> Signal<T> {
     pub fn new(value: T) -> Self {
-        let id = allocate_node(NodeType::Signal);
+        let id = allocate_node(NodeType::Signal, None);
         Self {
             id,
-            value: UnsafeCell::new(value),
+            inner: Rc::new(SignalInner {
+                value: UnsafeCell::new(value),
+            }),
         }
     }
 
     pub fn get(&self) -> &T {
         track_read(self.id);
-        unsafe { &*self.value.get() }
+        unsafe { &*self.inner.value.get() }
     }
 
     pub fn set(&self, new_value: T) {
-        let same = unsafe { &*self.value.get() == &new_value };
+        let same = unsafe { &*self.inner.value.get() == &new_value };
         if !same {
             unsafe {
-                *self.value.get() = new_value;
+                *self.inner.value.get() = new_value;
             }
             mark_dirty(self.id);
         }
@@ -38,50 +53,28 @@ impl<T: PartialEq> Signal<T> {
         F: FnOnce(&T) -> R,
     {
         track_read(self.id);
-        let val = unsafe { &*self.value.get() };
+        let val = unsafe { &*self.inner.value.get() };
         f(val)
     }
-
-    pub fn read_only(&self) -> ReadOnlySignal<'_, T> {
-        ReadOnlySignal {
-            id: self.id,
-            value: unsafe { &*self.value.get() },
-        }
-    }
 }
 
-pub struct ReadOnlySignal<'a, T> {
-    pub id: SignalId,
-    value: &'a T,
-}
-
-impl<'a, T> ReadOnlySignal<'a, T> {
-    pub fn get(&self) -> &T {
-        track_read(self.id);
-        self.value
-    }
-}
-
-#[cfg(feature = "global-registry")]
-use once_cell::sync::Lazy;
-#[cfg(feature = "global-registry")]
-use std::collections::HashMap;
-#[cfg(feature = "global-registry")]
-use std::sync::Mutex;
-
-#[cfg(feature = "global-registry")]
-static GLOBAL_REGISTRY: Lazy<Mutex<HashMap<String, SignalId>>> =
-    Lazy::new(|| Mutex::new(HashMap::new()));
-
-#[cfg(feature = "global-registry")]
-pub fn register_global_signal(name: String, id: SignalId) {
-    GLOBAL_REGISTRY.lock().unwrap().insert(name, id);
+pub struct MemoInner<T> {
+    pub value: UnsafeCell<T>,
+    pub compute_fn: Rc<dyn Fn() -> T>,
 }
 
 pub struct Memo<T> {
     pub id: SignalId,
-    pub value: UnsafeCell<T>,
-    compute_fn: Rc<dyn Fn() -> T>,
+    pub inner: Rc<MemoInner<T>>,
+}
+
+impl<T> Clone for Memo<T> {
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id,
+            inner: self.inner.clone(),
+        }
+    }
 }
 
 impl<T: PartialEq + 'static> Memo<T> {
@@ -89,44 +82,54 @@ impl<T: PartialEq + 'static> Memo<T> {
     where
         F: Fn() -> T + 'static,
     {
-        let id = allocate_node(NodeType::Memo);
         let compute_fn = Rc::new(f);
+        let inner = Rc::new(MemoInner {
+            value: UnsafeCell::new(unsafe { std::mem::zeroed() }),
+            compute_fn: compute_fn.clone(),
+        });
 
-        // Initial compute
-        push_observer(id);
-        let val = (compute_fn)();
-        pop_observer();
+        let id = allocate_node(NodeType::Memo, None);
 
-        Self {
-            id,
-            value: UnsafeCell::new(val),
-            compute_fn,
+        {
+            let inner_weak = Rc::downgrade(&inner);
+            let update_fn = Rc::new(move || {
+                if let Some(inner) = inner_weak.upgrade() {
+                    push_observer(id);
+                    let new_val = (inner.compute_fn)();
+                    pop_observer();
+
+                    unsafe {
+                        let old_val = &*inner.value.get();
+                        if &new_val != old_val {
+                            *inner.value.get() = new_val;
+                            mark_dirty(id);
+                        }
+                    }
+                }
+            });
+
+            // Initial compute
+            (update_fn)();
+
+            // Patch graph node
+            crate::context::with_graph_mut(|g| {
+                if let Some(node) = g.nodes.get_mut(id) {
+                    node.update_fn = Some(update_fn);
+                }
+            });
         }
+
+        Self { id, inner }
     }
 
     pub fn get(&self) -> &T {
         track_read(self.id);
-        unsafe { &*self.value.get() }
-    }
-
-    pub fn update(&self) {
-        push_observer(self.id);
-        let new_val = (self.compute_fn)();
-        pop_observer();
-
-        let old_val = unsafe { &*self.value.get() };
-        if &new_val != old_val {
-            unsafe {
-                *self.value.get() = new_val;
-            }
-            mark_dirty(self.id);
-        }
+        unsafe { &*self.inner.value.get() }
     }
 }
 
 pub struct Effect {
     pub id: SignalId,
-    run_fn: Rc<dyn Fn()>,
 }
 
 impl Effect {
@@ -134,20 +137,29 @@ impl Effect {
     where
         F: Fn() + 'static,
     {
-        let id = allocate_node(NodeType::Effect);
         let run_fn = Rc::new(f);
+        let id = allocate_node(NodeType::Effect, None);
 
-        push_observer(id);
-        (run_fn)();
-        pop_observer();
+        let run_fn_weak = Rc::downgrade(&run_fn);
+        let update_fn = Rc::new(move || {
+            if let Some(run_fn) = run_fn_weak.upgrade() {
+                push_observer(id);
+                (run_fn)();
+                pop_observer();
+            }
+        });
 
-        Self { id, run_fn }
-    }
+        // Initial run
+        (update_fn)();
 
-    pub fn run(&self) {
-        push_observer(self.id);
-        (self.run_fn)();
-        pop_observer();
+        // Patch graph node
+        crate::context::with_graph_mut(|g| {
+            if let Some(node) = g.nodes.get_mut(id) {
+                node.update_fn = Some(update_fn);
+            }
+        });
+
+        Self { id }
     }
 }
 

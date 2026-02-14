@@ -17,6 +17,7 @@ pub struct GraphNode {
     pub dependencies: SmallVec<[SignalId; 4]>,
     pub depth: u32,
     pub node_type: NodeType,
+    pub update_fn: Option<std::rc::Rc<dyn Fn()>>,
 }
 
 pub struct Graph {
@@ -34,12 +35,17 @@ impl Graph {
         }
     }
 
-    pub fn allocate(&mut self, node_type: NodeType) -> SignalId {
+    pub fn allocate(
+        &mut self,
+        node_type: NodeType,
+        update_fn: Option<std::rc::Rc<dyn Fn()>>,
+    ) -> SignalId {
         self.nodes.insert(GraphNode {
             subscribers: SmallVec::new(),
             dependencies: SmallVec::new(),
             depth: 0,
             node_type,
+            update_fn,
         })
     }
 

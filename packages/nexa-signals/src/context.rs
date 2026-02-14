@@ -26,8 +26,8 @@ pub fn mark_dirty(id: SignalId) {
     });
 }
 
-pub fn allocate_node(node_type: NodeType) -> SignalId {
-    GRAPH.with(|g| g.borrow_mut().allocate(node_type))
+pub fn allocate_node(node_type: NodeType, update_fn: Option<std::rc::Rc<dyn Fn()>>) -> SignalId {
+    GRAPH.with(|g| g.borrow_mut().allocate(node_type, update_fn))
 }
 
 pub fn batch<F, R>(f: F) -> R
@@ -50,4 +50,37 @@ pub fn push_observer(id: SignalId) {
 
 pub fn pop_observer() {
     OBSERVERS.with(|o| o.borrow_mut().pop());
+}
+
+pub fn with_graph<F, R>(f: F) -> R
+where
+    F: FnOnce(&Graph) -> R,
+{
+    GRAPH.with(|g| f(&g.borrow()))
+}
+
+pub fn with_graph_mut<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut Graph) -> R,
+{
+    GRAPH.with(|g| f(&mut *g.borrow_mut()))
+}
+
+pub fn propagate(order: Vec<SignalId>) {
+    let mut update_fns = Vec::new();
+
+    GRAPH.with(|g| {
+        let graph = g.borrow();
+        for id in order {
+            if let Some(node) = graph.nodes.get(id) {
+                if let Some(update_fn) = &node.update_fn {
+                    update_fns.push(update_fn.clone());
+                }
+            }
+        }
+    });
+
+    for update_fn in update_fns {
+        (update_fn)();
+    }
 }
