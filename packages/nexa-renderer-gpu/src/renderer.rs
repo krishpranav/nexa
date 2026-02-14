@@ -1,6 +1,6 @@
-use crate::scene::{Rect, Scene, SceneNode};
+use crate::scene::{Scene, SceneNode};
 use std::sync::Arc;
-use wgpu::util::DeviceExt;
+
 use winit::window::Window;
 
 #[repr(C)]

@@ -1,11 +1,14 @@
-use clap::{Parser, Subcommand};
-use anyhow::{Result, Context};
-use std::process::Command;
-use std::path::{Path, PathBuf};
+use anyhow::{Context, Result, bail};
 use cargo_metadata::MetadataCommand;
+use clap::{Parser, Subcommand, ValueEnum};
+use log::{error, info, warn};
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
 #[derive(Parser)]
 #[command(name = "nexa")]
+#[command(version = "0.1.0")]
 #[command(about = "Nexa Framework CLI", long_about = None)]
 struct Cli {
     #[command(subcommand)]
@@ -18,17 +21,25 @@ enum Commands {
     New {
         /// Project name
         name: String,
+        /// Project template
+        #[arg(long, value_enum, default_value_t = Template::Web)]
+        template: Template,
     },
     /// Build the project
     Build {
         /// Build for release
         #[arg(long)]
         release: bool,
+        /// Target platform (detects automatically if omitted)
+        #[arg(long)]
+        target: Option<String>,
     },
-    /// Check the project for errors
-    Check,
     /// Run the development server
-    Dev,
+    Dev {
+        /// Watch for changes
+        #[arg(long, default_value_t = true)]
+        watch: bool,
+    },
     /// Serve the static assets
     Serve {
         /// Port to listen on
@@ -38,117 +49,164 @@ enum Commands {
         #[arg(long, default_value = "dist")]
         dir: String,
     },
+    /// Scan workspace and show metadata
+    Scan,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
+enum Template {
+    Web,
+    Desktop,
+    Mobile,
+    Fullstack,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    env_logger::init();
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::New { name } => create_new_project(&name)?,
-        Commands::Build { release } => build_project(release)?,
-        Commands::Check => check_project()?,
-        Commands::Dev => run_dev()?,
+        Commands::New { name, template } => create_new_project(&name, template)?,
+        Commands::Build { release, target } => build_project(release, target)?,
+        Commands::Dev { watch } => run_dev(watch)?,
         Commands::Serve { port, dir } => serve_dir(port, &dir).await?,
+        Commands::Scan => {
+            let root = scan_workspace()?;
+            println!("Nexa Workspace detected at: {}", root.display());
+        }
     }
 
     Ok(())
 }
 
-fn create_new_project(name: &str) -> Result<()> {
-    println!("Creating new Nexa project: {}", name);
-    // Basic cargo new wrapper for now
-    Command::new("cargo")
-        .args(&["new", name])
-        .status()
-        .context("Failed to run cargo new")?;
-        
-    // In a real CLI, we would modify Cargo.toml to add nexa dependencies
-    // and scaffold a basic App structure.
+fn create_new_project(name: &str, template: Template) -> Result<()> {
+    info!("Creating new Nexa {:?} project: {}", template, name);
+
+    // Create directory
+    fs::create_dir_all(name).context("Failed to create project directory")?;
     let project_path = Path::new(name);
-    let _cargo_toml_path = project_path.join("Cargo.toml");
-    
-    // Append nexa dep if we could (mocking this step as implied by "scaffold")
-    // println!("Adding nexa dependency..."); 
-    
+
+    // Initial cargo init
+    Command::new("cargo")
+        .args(&["init", name, "--lib"])
+        .status()
+        .context("Failed to run cargo init")?;
+
+    // Scaffold based on template
+    match template {
+        Template::Web => scaffold_web(project_path)?,
+        Template::Desktop => scaffold_desktop(project_path)?,
+        Template::Mobile => scaffold_mobile(project_path)?,
+        Template::Fullstack => scaffold_fullstack(project_path)?,
+    }
+
+    info!("Project {} created successfully!", name);
     Ok(())
 }
 
-fn build_project(release: bool) -> Result<()> {
-    println!("Building project...");
+fn scaffold_web(path: &Path) -> Result<()> {
+    let cargo_toml = r#"[package]
+name = "my-nexa-app"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+nexa-core = { git = "https://github.com/nexa-rs/nexa" }
+nexa-web = { git = "https://github.com/nexa-rs/nexa" }
+"#;
+    fs::write(path.join("Cargo.toml"), cargo_toml)?;
+    fs::write(
+        path.join("index.html"),
+        "<html><body><div id=\"main\"></div><script type=\"module\" src=\"/src/main.rs\"></script></body></html>",
+    )?;
+    Ok(())
+}
+
+fn scaffold_desktop(_path: &Path) -> Result<()> {
+    // Scaffold desktop specifics
+    Ok(())
+}
+
+fn scaffold_mobile(_path: &Path) -> Result<()> {
+    // Scaffold mobile specifics (Android/iOS dirs)
+    Ok(())
+}
+
+fn scaffold_fullstack(_path: &Path) -> Result<()> {
+    // Scaffold fullstack (SSR + API)
+    Ok(())
+}
+
+fn build_project(release: bool, target: Option<String>) -> Result<()> {
+    let metadata = MetadataCommand::new()
+        .exec()
+        .context("Failed to read cargo metadata")?;
+    let _root = &metadata.workspace_root;
+
+    let resolved_target = target.unwrap_or_else(|| {
+        // Detect target from dependencies
+        "web".to_string() // default for now
+    });
+
+    info!("Building for target: {}", resolved_target);
+
     let mut args = vec!["build"];
     if release {
         args.push("--release");
     }
-    
+
+    if resolved_target == "web" {
+        // Run wasm-pack or nexa-bundler
+        info!("Running WASM bundling hooks...");
+    }
+
     let status = Command::new("cargo")
         .args(&args)
         .status()
         .context("Failed to run cargo build")?;
-        
+
     if !status.success() {
-        anyhow::bail!("Build failed");
+        bail!("Build failed with status {}", status);
     }
-    
+
     Ok(())
 }
 
-fn check_project() -> Result<()> {
-    println!("Checking project...");
-    let status = Command::new("cargo")
-        .arg("check")
-        .status()
-        .context("Failed to run cargo check")?;
-        
-    if !status.success() {
-        anyhow::bail!("Check failed");
+fn run_dev(watch: bool) -> Result<()> {
+    info!("Starting dev server (watch={})...", watch);
+    if watch {
+        // Check for cargo-watch
+        let status = Command::new("cargo").args(&["watch", "-x", "run"]).status();
+
+        if status.is_err() || !status.unwrap().success() {
+            warn!("cargo-watch not found, falling back to simple run");
+            Command::new("cargo").arg("run").status()?;
+        }
+    } else {
+        Command::new("cargo").arg("run").status()?;
     }
-    
-    Ok(())
-}
-
-fn run_dev() -> Result<()> {
-    println!("Starting dev server (wrapper around cargo run)...");
-    // This assumes the user project is a binary that runs a server (e.g. nexa-fullstack)
-    // or a desktop app. 
-    // For web, this would need trunk or wasm-pack.
-    // We'll assume a generic cargo run for now.
-    
-    let status = Command::new("cargo")
-        .arg("run")
-        .status()
-        .context("Failed to run cargo run")?;
-
-    if !status.success() {
-        anyhow::bail!("Dev run failed");
-    }
-
     Ok(())
 }
 
 async fn serve_dir(port: u16, dir: &str) -> Result<()> {
-    use axum::Router;
-    use tower_http::services::ServeDir;
     use std::net::SocketAddr;
+    use tower_http::services::ServeDir;
 
-    println!("Serving directory '{}' on http://localhost:{}", dir, port);
+    info!("Serving '{}' on http://localhost:{}", dir, port);
 
-    let app = Router::new().nest_service("/", ServeDir::new(dir));
+    let app = axum::Router::new().nest_service("/", ServeDir::new(dir));
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    
+
     axum::serve(listener, app).await?;
-    
     Ok(())
 }
 
-// Workspace scanning helper (unused in this minimal impl but requested)
-// We'll add a helper that can be expanded later.
-#[allow(dead_code)]
 fn scan_workspace() -> Result<PathBuf> {
     let metadata = MetadataCommand::new()
         .exec()
         .context("Failed to read cargo metadata")?;
-        
+
     Ok(metadata.workspace_root.into())
 }

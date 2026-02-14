@@ -54,7 +54,7 @@ impl<R: Routable + Default> Navigator<R> {
     }
 
     pub fn replace(&self, target: R) {
-        let path = target.to_string();
+        let _path = target.to_string();
         #[cfg(target_arch = "wasm32")]
         {
             let window = web_sys::window().unwrap();
