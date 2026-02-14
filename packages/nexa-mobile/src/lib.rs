@@ -1,72 +1,103 @@
+use log::info;
 use nexa_core::Runtime;
 use nexa_renderer_gpu::GpuRenderer;
-use std::sync::Arc;
-// use winit::... we need to hook into the platform's window
+use std::sync::Mutex;
 
-// Shared state container
-struct MobileApp {
-    runtime: Runtime,
-    renderer: Option<GpuRenderer>,
+// Simple Thread-safe state container
+pub struct MobileApp {
+    pub runtime: Runtime,
+    pub renderer: Option<GpuRenderer>,
+    pub suspended: bool,
 }
 
-static mut APP_INSTANCE: Option<MobileApp> = None;
+lazy_static::lazy_static! {
+    pub static ref APP_INSTANCE: Mutex<Option<MobileApp>> = Mutex::new(None);
+}
 
-// --- Android JNI Bindings ---
+// Resource loading abstraction
+pub trait ResourceLoader {
+    fn load_asset(&self, path: &str) -> Vec<u8>;
+}
+
+// --- Android Bindings ---
 #[cfg(target_os = "android")]
-#[allow(non_snake_case)]
 pub mod android {
     use super::*;
-    use jni::objects::JClass;
-    use jni::sys::jint;
     use jni::JNIEnv;
+    use jni::objects::JClass;
     use winit::platform::android::activity::AndroidApp;
 
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn android_main(app: AndroidApp) {
-        // This is the entry point for `android-activity`.
-        // In a real winit app on Android, we'd pass this `app` to winit's EventLoop builder.
-        // For this minimal binding stub, we just verify compilation of JNI deps.
+        info!("Nexa Android Entry Point");
+        // In a real app, this would build the Winit EventLoop
     }
 
-    // Example JNI call to init
-    #[no_mangle]
-    pub unsafe extern "C" fn Java_com_nexa_NexaBridge_init(env: JNIEnv, _class: JClass) {
-        // Initialize runtime
-        APP_INSTANCE = Some(MobileApp {
-            runtime: Runtime::new(),
-            renderer: None, // Initialized later when surface is ready
-        });
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn Java_com_nexa_NexaBridge_onStart(_env: JNIEnv, _class: JClass) {
+        info!("Android onStart");
+    }
+
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn Java_com_nexa_NexaBridge_onResume(_env: JNIEnv, _class: JClass) {
+        if let Some(app) = APP_INSTANCE.lock().unwrap().as_mut() {
+            app.suspended = false;
+        }
+    }
+
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn Java_com_nexa_NexaBridge_onPause(_env: JNIEnv, _class: JClass) {
+        if let Some(app) = APP_INSTANCE.lock().unwrap().as_mut() {
+            app.suspended = true;
+        }
+    }
+
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn Java_com_nexa_NexaBridge_onLowMemory(_env: JNIEnv, _class: JClass) {
+        warn!("Mobile: Low Memory Pressure detected!");
+        // Clear caches
     }
 }
 
 // --- iOS / Swift C Bindings ---
-#[cfg(target_os = "ios")]
 pub mod ios {
     use super::*;
-    use std::ffi::c_void;
 
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub unsafe extern "C" fn nexa_mobile_init() {
-        APP_INSTANCE = Some(MobileApp {
+        let mut app = APP_INSTANCE.lock().unwrap();
+        *app = Some(MobileApp {
             runtime: Runtime::new(),
             renderer: None,
+            suspended: false,
         });
     }
 
-    #[no_mangle]
-    pub unsafe extern "C" fn nexa_mobile_update() {
-        if let Some(app) = APP_INSTANCE.as_mut() {
-            app.runtime.update();
-            // TODO: Process mutations
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nexa_mobile_on_touch(x: f64, y: f64, phase: i32) {
+        if let Some(_app) = APP_INSTANCE.lock().unwrap().as_mut() {
+            // Translate touch to Nexa event
+            info!("Touch event: ({}, {}) phase: {}", x, y, phase);
         }
     }
 
-    // Stub to pass raw window handle pointer from Swift (UIView layer)
-    #[no_mangle]
-    pub unsafe extern "C" fn nexa_mobile_set_surface(view_ptr: *mut c_void) {
-        // Conversion logic from raw pointer to RawWindowHandle would happen here
-        // creating a surface for wgpu.
-        // Since we don't have the full iOS toolchain context here, we just stub it.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nexa_mobile_on_orientation_change(width: i32, height: i32) {
+        if let Some(app) = APP_INSTANCE.lock().unwrap().as_mut() {
+            if let Some(_r) = app.renderer.as_mut() {
+                info!("Orientation change: {}x{}", width, height);
+            }
+        }
+    }
+
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nexa_mobile_update() {
+        if let Some(app) = APP_INSTANCE.lock().unwrap().as_mut() {
+            if !app.suspended {
+                app.runtime.update();
+                let _mutations = app.runtime.drain_mutations();
+            }
+        }
     }
 }
 
@@ -74,12 +105,11 @@ pub mod ios {
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub mod host_stub {
     use super::*;
-
-    pub fn init() {
-        // Just used to verify struct composition compiles
+    pub fn verify() {
         let _ = MobileApp {
             runtime: Runtime::new(),
             renderer: None,
+            suspended: false,
         };
     }
 }
