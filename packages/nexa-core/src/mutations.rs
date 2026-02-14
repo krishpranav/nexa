@@ -10,6 +10,10 @@ pub enum Mutation {
         path: Vec<u8>,
         id: u64,
     },
+    CreateElement {
+        tag: String,
+        id: u64,
+    },
     CreatePlaceholder {
         id: u64,
     },

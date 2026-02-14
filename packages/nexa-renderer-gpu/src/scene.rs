@@ -39,10 +39,7 @@ pub enum SceneNode {
 impl SceneNode {
     pub fn layout(&mut self, ctx: &LayoutContext) {
         // Simple layout logic: for now just pass down context
-        if let SceneNode::Container {
-            ref mut children, ..
-        } = self
-        {
+        if let SceneNode::Container { children, .. } = self {
             for child in children {
                 child.layout(ctx);
             }
@@ -50,10 +47,7 @@ impl SceneNode {
     }
 
     pub fn mark_dirty(&mut self) {
-        if let SceneNode::Container {
-            ref mut is_dirty, ..
-        } = self
-        {
+        if let SceneNode::Container { is_dirty, .. } = self {
             *is_dirty = true;
         }
     }
