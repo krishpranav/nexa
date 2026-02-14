@@ -1,2 +1,2 @@
 pub mod render;
-pub use render::{RenderMode, Renderer};
+pub use render::{Renderer, SsrConfig, SsrStream};

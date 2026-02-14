@@ -59,6 +59,7 @@ pub enum VirtualNode {
     Text(Text),
     Fragment(Fragment),
     Component(Component),
+    Suspense(Suspense),
     Placeholder,
 }
 
@@ -89,6 +90,12 @@ pub struct Component {
     pub name: &'static str,
     pub render_fn: fn() -> NodeId,
     pub scope: Option<crate::runtime::ScopeId>,
+    pub parent: Option<NodeId>,
+}
+
+pub struct Suspense {
+    pub fallback: NodeId,
+    pub actual: NodeId,
     pub parent: Option<NodeId>,
 }
 
