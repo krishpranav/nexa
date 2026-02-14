@@ -1,4 +1,4 @@
-use slotmap::{new_key_type, SlotMap};
+use slotmap::{SlotMap, new_key_type};
 use smallvec::SmallVec;
 
 new_key_type! {
@@ -29,13 +29,28 @@ impl<T> GenericArena<T> {
 
 pub struct VDomArena {
     pub nodes: GenericArena<VirtualNode>,
+    pub metadata: GenericArena<NodeMetadata>,
+}
+
+#[derive(Default, Clone, Copy)]
+pub struct NodeMetadata {
+    pub is_static: bool,
+    pub render_count: u64,
 }
 
 impl VDomArena {
     pub fn new() -> Self {
         Self {
             nodes: GenericArena::new(),
+            metadata: GenericArena::new(),
         }
+    }
+
+    pub fn insert_with_metadata(&mut self, node: VirtualNode, metadata: NodeMetadata) -> NodeId {
+        let id = self.nodes.insert(node);
+        // Ensure metadata arena stays in sync
+        self.metadata.items.insert_with_key(|_| metadata);
+        id
     }
 }
 
@@ -52,11 +67,12 @@ pub struct Element {
     pub props: SmallVec<[Attribute; 4]>,
     pub children: SmallVec<[NodeId; 4]>,
     pub parent: Option<NodeId>,
+    pub key: Option<String>,
 }
 
 pub struct Attribute {
     pub name: &'static str,
-    pub value: String, // Simplified for now, could be Any
+    pub value: String,
 }
 
 pub struct Text {
@@ -71,7 +87,7 @@ pub struct Fragment {
 
 pub struct Component {
     pub name: &'static str,
-    pub render_fn: fn() -> NodeId, // Placeholder for component function
+    pub render_fn: fn() -> NodeId,
     pub scope: Option<crate::runtime::ScopeId>,
     pub parent: Option<NodeId>,
 }
@@ -91,9 +107,10 @@ where
     F: FnOnce() -> R,
 {
     ACTIVE_ARENA.with(|ptr| {
+        let old = *ptr.borrow();
         *ptr.borrow_mut() = Some(arena as *mut _);
         let res = f();
-        *ptr.borrow_mut() = None;
+        *ptr.borrow_mut() = old;
         res
     })
 }
@@ -104,8 +121,6 @@ where
 {
     ACTIVE_ARENA.with(|ptr| {
         if let Some(raw) = *ptr.borrow() {
-            // SAFE: We assume set_active_arena upholds validity and non-aliasing logic
-            // during the scope of its execution.
             unsafe { f(&mut *raw) }
         } else {
             panic!("No active VDOM arena! Are you calling rsx! outside a Runtime context?");
