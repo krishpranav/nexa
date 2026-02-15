@@ -1,0 +1,16 @@
+[package]
+name = "desktop-counter"
+version = "0.1.0"
+edition = "2021"
+
+
+
+[dependencies]
+nexa-core = { path = "../../packages/nexa-core" }
+nexa-signals = { path = "../../packages/nexa-signals" }
+nexa-desktop = { path = "../../packages/nexa-desktop" }
+nexa-renderer-gpu = { path = "../../packages/nexa-renderer-gpu" }
+nexa-rsx = { path = "../../packages/nexa-rsx" }
+log = "0.4"
+env_logger = "0.10"
+smallvec = "1.11"
