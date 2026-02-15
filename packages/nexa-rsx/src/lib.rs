@@ -6,6 +6,7 @@ use syn::{
     Expr, Ident, LitStr, Result, Token,
     parse::{Parse, ParseStream},
     parse_macro_input,
+    ext::IdentExt,
 };
 
 #[proc_macro]
@@ -168,21 +169,46 @@ impl Parse for Element {
         let name: Ident = input.parse()?;
         let span = name.span();
         let mut attributes: Vec<Attribute> = Vec::new();
-
-        // Optional attributes
-        while input.peek(Ident) {
-            attributes.push(input.parse()?);
-            if input.peek(Token![,]) {
-                input.parse::<Token![,]>()?;
-            }
-        }
-
         let mut children = Vec::new();
+
         if input.peek(syn::token::Brace) {
             let content;
             syn::braced!(content in input);
             while !content.is_empty() {
-                children.push(content.parse()?);
+                if content.peek(LitStr) {
+                    children.push(RsxNode::Text(LitStrOrExpr::Lit(content.parse()?)));
+                } else if content.peek(syn::token::Brace) {
+                    let block_content;
+                    syn::braced!(block_content in content);
+                    children.push(RsxNode::Text(LitStrOrExpr::Expr(block_content.parse()?)));
+                } else if content.peek(Token![if]) || content.peek(Token![for]) {
+                    children.push(RsxNode::ControlFlow(content.parse()?));
+                } else if content.fork().call(Ident::parse_any).is_ok() {
+                    // Ambiguous case: Attribute or Element?
+                    // Use fork to peek ahead
+                    let fork = content.fork();
+                    let _ident = fork.call(Ident::parse_any)?;
+                    
+                    let is_attribute = if fork.peek(Token![:]) {
+                        true // key: value
+                    } else if fork.peek(syn::token::Brace) {
+                        false // key { ... } -> Element/Component
+                    } else {
+                        true // key (shorthand) or key,
+                    };
+
+                    if is_attribute {
+                        attributes.push(content.parse()?);
+                    } else {
+                        // Element or Component
+                        // If capitalizing, Component. But RsxNode parse handles that.
+                        // We can just call RsxNode::parse
+                        children.push(content.parse()?);
+                    }
+                } else {
+                    return Err(content.error("Unexpected token in RSX element"));
+                }
+
                 if content.peek(Token![,]) {
                     content.parse::<Token![,]>()?;
                 }
@@ -192,16 +218,16 @@ impl Parse for Element {
         // Validate keys
         let mut keys = HashSet::new();
         for attr in &attributes {
-            if attr.name == "key" {
-                if let AttributeValue::Lit(l) = &attr.value {
-                    if !keys.insert(l.value()) {
-                        return Err(syn::Error::new(
-                            attr.name.span(),
-                            "Duplicate key in element",
-                        ));
-                    }
-                }
-            }
+             if attr.name == "key" {
+                 if let AttributeValue::Lit(l) = &attr.value {
+                     if !keys.insert(l.value()) {
+                         return Err(syn::Error::new(
+                             attr.name.span(),
+                             "Duplicate key in element",
+                         ));
+                     }
+                 }
+             }
         }
 
         Ok(Element {
@@ -218,28 +244,58 @@ impl ToTokens for Element {
         let tag = self.name.to_string();
         let children = &self.children;
         let mut props = Vec::new();
+        let mut listeners = Vec::new();
 
         for attr in &self.attributes {
-            let name = attr.name.to_string();
-            let val = match &attr.value {
-                AttributeValue::Lit(l) => {
-                    let s = l.value();
-                    quote! { #s.to_string() }
-                }
-                AttributeValue::Expr(e) => {
-                    quote! { format!("{}", #e) }
-                }
-                AttributeValue::Shorthand => {
-                    let name_ident = &attr.name;
-                    quote! { format!("{}", #name_ident) }
-                }
-            };
-            props.push(quote! {
-                nexa_core::Attribute {
-                    name: #name.to_string(),
-                    value: #val,
-                }
-            });
+            let name_str = attr.name.to_string();
+            
+            if name_str.starts_with("on") {
+                // Event Listener
+                // nexa-core::EventListener { name: "click", cb: Rc::new(RefCell::new(...)) }
+                let event_name = name_str.trim_start_matches("on").to_lowercase();
+                let val = match &attr.value {
+                    AttributeValue::Lit(_) => {
+                         // We don't support string literals for events yet, or maybe we do as "dynamic" handler lookup?
+                         // For now, assume it's an expression or shorthand
+                         quote! { panic!("String literal event handlers not supported yet in RSX") }
+                    },
+                    AttributeValue::Expr(e) => {
+                        quote! { #e }
+                    },
+                    AttributeValue::Shorthand => {
+                        let name_ident = &attr.name;
+                        quote! { #name_ident }
+                    }
+                };
+                
+                listeners.push(quote! {
+                    nexa_core::vdom::EventListener {
+                        name: #event_name,
+                        cb: std::rc::Rc::new(std::cell::RefCell::new(#val)),
+                    }
+                });
+            } else {
+                // Regular Attribute
+                let val = match &attr.value {
+                    AttributeValue::Lit(l) => {
+                        let s = l.value();
+                        quote! { #s.to_string() }
+                    }
+                    AttributeValue::Expr(e) => {
+                        quote! { format!("{}", #e) }
+                    }
+                    AttributeValue::Shorthand => {
+                        let name_ident = &attr.name;
+                        quote! { format!("{}", #name_ident) }
+                    }
+                };
+                props.push(quote! {
+                    nexa_core::Attribute {
+                        name: #name_str,
+                        value: #val,
+                    }
+                });
+            }
         }
 
         let is_static = self.is_static();
@@ -262,6 +318,7 @@ impl ToTokens for Element {
                     nexa_core::VirtualNode::Element(nexa_core::Element {
                         tag: #tag,
                         props: smallvec::smallvec![ #(#props),* ],
+                        listeners: smallvec::smallvec![ #(#listeners),* ],
                         children: __el_nodes,
                         parent: None,
                         key: None,
@@ -313,7 +370,8 @@ struct Attribute {
 
 impl Parse for Attribute {
     fn parse(input: ParseStream) -> Result<Self> {
-        let name: Ident = input.parse()?;
+        use syn::ext::IdentExt;
+        let name: Ident = input.call(Ident::parse_any)?;
         if input.peek(Token![:]) {
             input.parse::<Token![:]>()?;
             if input.peek(LitStr) {
