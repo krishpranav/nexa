@@ -2,7 +2,7 @@ use crate::SignalId;
 use crate::context::{allocate_node, mark_dirty, pop_observer, push_observer, track_read};
 use crate::graph::NodeType;
 use std::cell::UnsafeCell;
-use std::rc::{Rc, Weak};
+use std::rc::Rc;
 
 pub struct SignalInner<T> {
     pub value: UnsafeCell<T>,
