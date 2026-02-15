@@ -52,8 +52,13 @@ impl VDomArena {
         self.metadata.items.insert_with_key(|_| metadata);
         id
     }
+
+    pub fn insert(&mut self, node: VirtualNode) -> NodeId {
+        self.insert_with_metadata(node, NodeMetadata::default())
+    }
 }
 
+#[derive(Debug, Clone)]
 pub enum VirtualNode {
     Element(Element),
     Text(Text),
@@ -63,29 +68,55 @@ pub enum VirtualNode {
     Placeholder,
 }
 
+use crate::events::Event;
+use std::cell::RefCell;
+use std::fmt;
+use std::rc::Rc;
+
+#[derive(Clone)]
+pub struct EventListener {
+    pub name: &'static str,
+    pub cb: Rc<RefCell<dyn FnMut(Event)>>,
+}
+
+impl fmt::Debug for EventListener {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("EventListener")
+            .field("name", &self.name)
+            .field("cb", &"FnMut")
+            .finish()
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct Element {
     pub tag: &'static str,
     pub props: SmallVec<[Attribute; 4]>,
+    pub listeners: SmallVec<[EventListener; 1]>,
     pub children: SmallVec<[NodeId; 4]>,
     pub parent: Option<NodeId>,
     pub key: Option<String>,
 }
 
+#[derive(Debug, Clone)]
 pub struct Attribute {
     pub name: &'static str,
     pub value: String,
 }
 
+#[derive(Debug, Clone)]
 pub struct Text {
     pub text: String,
     pub parent: Option<NodeId>,
 }
 
+#[derive(Debug, Clone)]
 pub struct Fragment {
     pub children: SmallVec<[NodeId; 4]>,
     pub parent: Option<NodeId>,
 }
 
+#[derive(Debug, Clone)]
 pub struct Component {
     pub name: &'static str,
     pub render_fn: fn() -> NodeId,
@@ -93,13 +124,12 @@ pub struct Component {
     pub parent: Option<NodeId>,
 }
 
+#[derive(Debug, Clone)]
 pub struct Suspense {
     pub fallback: NodeId,
     pub actual: NodeId,
     pub parent: Option<NodeId>,
 }
-
-use std::cell::RefCell;
 
 thread_local! {
     static ACTIVE_ARENA: RefCell<Option<*mut VDomArena>> = RefCell::new(None);

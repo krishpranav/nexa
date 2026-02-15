@@ -1,6 +1,8 @@
 use crate::mutations::Mutation;
-use crate::vdom::{NodeId, VDomArena, VirtualNode};
+use crate::vdom::{NodeId, VDomArena, VirtualNode, set_active_arena};
 use nexa_scheduler::Scheduler;
+use nexa_signals::NodeType;
+use nexa_signals::context::{allocate_node, pop_observer, push_observer};
 
 use slotmap::{Key, SlotMap, new_key_type};
 use std::collections::HashMap;
@@ -29,6 +31,8 @@ pub struct Runtime {
     pub mutation_buffer: Vec<Mutation>,
     pub scheduler: Scheduler,
     pub component_registry: HashMap<&'static str, fn() -> NodeId>,
+    pub root_fn: Option<fn() -> NodeId>,
+    pub root_effect: Option<nexa_signals::SignalId>,
     pub root_node: Option<NodeId>,
     pub phase: RenderPhase,
     pub profiling: Profiling,
@@ -55,6 +59,8 @@ impl Runtime {
             mutation_buffer: Vec::new(),
             scheduler: Scheduler::new(),
             component_registry: HashMap::new(),
+            root_fn: None,
+            root_effect: None,
             root_node: None,
             phase: RenderPhase::Begin,
             profiling: Profiling::default(),
@@ -62,10 +68,19 @@ impl Runtime {
     }
 
     pub fn mount(&mut self, root_component_name: &'static str, root_fn: fn() -> NodeId) {
+        tracing::info!(
+            "Runtime::mount started for component: {}",
+            root_component_name
+        );
         self.phase = RenderPhase::Begin;
         self.profiling.render_count += 1;
 
         self.component_registry.insert(root_component_name, root_fn);
+        self.root_fn = Some(root_fn);
+
+        // Create a signal for the root effect/computation
+        let effect_id = allocate_node(NodeType::Effect, None);
+        self.root_effect = Some(effect_id);
 
         let _scope_id = self.scopes.insert(Scope {
             id: ScopeId::default(),
@@ -73,16 +88,64 @@ impl Runtime {
             lifecycle: ComponentLifecycle::default(),
         });
 
-        // Initial render
-        let root_id = (root_fn)();
-        self.root_node = Some(root_id);
+        // Initial render via run_root
+        self.run_root();
 
-        self.phase = RenderPhase::Commit;
-        self.mutation_buffer.push(Mutation::PushRoot {
-            id: root_id.data().as_ffi(),
-        });
-        self.profiling.mutation_count += 1;
+        tracing::info!(
+            "Mount complete. Generated {} mutations.",
+            self.profiling.mutation_count
+        );
     }
+
+    fn run_root(&mut self) {
+        if let Some(root_fn) = self.root_fn {
+            tracing::debug!("Running root render...");
+
+            // Track dependencies
+            if let Some(effect_id) = self.root_effect {
+                push_observer(effect_id);
+            }
+
+            let root_id = unsafe { set_active_arena(&mut self.arena, || (root_fn)()) };
+
+            // Stop tracking
+            if self.root_effect.is_some() {
+                pop_observer();
+            }
+
+            self.phase = RenderPhase::Commit;
+
+            // Simple Diff: Remove old root if exists
+            if let Some(old_root) = self.root_node {
+                tracing::debug!("Removing old root {:?}", old_root);
+                self.mutation_buffer.push(Mutation::Remove {
+                    id: old_root.data().as_ffi(),
+                });
+            }
+
+            self.root_node = Some(root_id);
+
+            // PushRoot to set the root ID context
+            self.mutation_buffer.push(Mutation::PushRoot {
+                id: root_id.data().as_ffi(),
+            });
+
+            // Generate creation mutations for the entire tree
+            self.generate_initial_tree(root_id);
+
+            // Append the new root to container
+            let roots = self.flatten_children(&[root_id]);
+            if !roots.is_empty() {
+                self.mutation_buffer.push(Mutation::AppendChildren {
+                    id: 0, // Container
+                    m: roots,
+                });
+                self.profiling.mutation_count += 1;
+            }
+        }
+    }
+
+    // ... update ...
 
     pub fn update(&mut self) {
         self.phase = RenderPhase::Begin;
@@ -106,9 +169,12 @@ impl Runtime {
             self.scheduler.run(&graph)
         });
 
-        for _sig in queue {
+        for sig in queue {
             // Re-render components dependent on sig
-            // Logic to find owner of signal and re-diff its tree
+            if Some(sig) == self.root_effect {
+                tracing::info!("Root effect dirty, re-rendering...");
+                self.run_root();
+            }
         }
 
         for scope in self.scopes.values_mut() {
@@ -283,6 +349,134 @@ impl Runtime {
         std::mem::swap(&mut self.mutation_buffer, &mut mutations);
         mutations
     }
+
+    pub fn generate_initial_tree(&mut self, id: NodeId) {
+        // Recursively walk the VDOM and generate Create/Append mutations
+        let node = if let Some(n) = self.arena.nodes.get(id) {
+            n
+        } else {
+            tracing::error!("Attempted to generate tree for missing node {:?}", id);
+            return;
+        };
+
+        let ffi_id = id.data().as_ffi();
+
+        match node {
+            VirtualNode::Element(el) => {
+                // 1. Create Element
+                tracing::debug!("Generating initial element: <{}> (id={})", el.tag, ffi_id);
+                self.mutation_buffer.push(Mutation::CreateElement {
+                    tag: el.tag.to_string(),
+                    id: ffi_id,
+                });
+                self.profiling.mutation_count += 1;
+
+                // 2. Set Attributes
+                let props = el.props.clone();
+                for prop in props {
+                    self.mutation_buffer.push(Mutation::SetAttribute {
+                        name: prop.name.to_string(),
+                        value: prop.value.clone(),
+                        id: ffi_id,
+                        ns: None,
+                    });
+                    self.profiling.mutation_count += 1;
+                }
+
+                // 2.5 Attach Listeners
+                let listeners = el.listeners.clone();
+                for listener in listeners {
+                    self.mutation_buffer.push(Mutation::NewEventListener {
+                        name: listener.name.to_lowercase(),
+                        id: ffi_id,
+                    });
+                    self.profiling.mutation_count += 1;
+                }
+
+                // 3. Recurse children
+                let children = el.children.clone();
+                let mut child_ids = Vec::new();
+                for &child_id in &children {
+                    self.generate_initial_tree(child_id);
+                    child_ids.push(child_id.data().as_ffi());
+                }
+
+                // 4. Append children
+                if !child_ids.is_empty() {
+                    self.mutation_buffer.push(Mutation::AppendChildren {
+                        id: ffi_id,
+                        m: child_ids,
+                    });
+                    self.profiling.mutation_count += 1;
+                }
+            }
+            VirtualNode::Text(txt) => {
+                tracing::debug!("Generating initial text: \"{}\" (id={})", txt.text, ffi_id);
+                self.mutation_buffer.push(Mutation::CreateTextNode {
+                    text: txt.text.clone(),
+                    id: ffi_id,
+                });
+                self.profiling.mutation_count += 1;
+            }
+            VirtualNode::Fragment(frag) => {
+                let children = frag.children.clone();
+                for &child in &children {
+                    self.generate_initial_tree(child);
+                }
+            }
+            _ => {
+                tracing::warn!("Skipping unsupported node type during initial generation");
+            }
+        }
+    }
+
+    pub fn handle_event(&mut self, node_id: u64, event_name: &str, event: crate::events::Event) {
+        // use slotmap::Key;
+        // Reconstruct NodeId from u64 (assuming 1:1 mapping with ffi_id logic)
+        // Helper: NodeId::from(Data::from_ffi(node_id))
+        // But NodeId key type details are hidden by slotmap macro?
+        // Actually NodeId is new_key_type, so we need to construct it carefully.
+        // nexa_core's NodeId might not be directly constructible from u64 if logic is complex,
+        // but slotmap keys are usually (version, index).
+        // Wait, ffi_id = id.data().as_ffi().
+        // We need to reverse this.
+        let id = NodeId::from(slotmap::KeyData::from_ffi(node_id));
+
+        tracing::debug!("Runtime handling event '{}' for node {:?}", event_name, id);
+
+        let mut callback_to_run = None;
+
+        if let Some(VirtualNode::Element(el)) = self.arena.nodes.get(id) {
+            for listener in &el.listeners {
+                if listener.name == event_name {
+                    callback_to_run = Some(listener.cb.clone());
+                    break;
+                }
+            }
+        } else {
+            // Maybe it's a component root or something?
+            // Or maybe the node was removed?
+            tracing::warn!("Event targeted at missing or non-element node {:?}", id);
+        }
+
+        if let Some(cb) = callback_to_run {
+            (cb.borrow_mut())(event);
+            self.update(); // Trigger reactivity update after event
+        }
+    }
+
+    pub fn flatten_children(&self, children: &[NodeId]) -> Vec<u64> {
+        let mut out = Vec::new();
+        for &id in children {
+            if let Some(VirtualNode::Fragment(frag)) = self.arena.nodes.get(id) {
+                out.extend(self.flatten_children(&frag.children));
+            } else {
+                out.push(id.data().as_ffi());
+            }
+        }
+        out
+    }
+
     pub fn verify_tree_integrity(&self) {
         if let Some(root) = self.root_node {
             self.walk_verify(root);
