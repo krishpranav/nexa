@@ -11,6 +11,7 @@ pub trait Routable: Sized + std::fmt::Display + Clone + PartialEq {
 pub struct Navigator<R: Routable> {
     current_route: Rc<RefCell<R>>,
     history: Rc<RefCell<Vec<String>>>,
+    #[allow(dead_code)]
     scroll_positions: Rc<RefCell<HashMap<String, (f64, f64)>>>,
 }
 
@@ -59,13 +60,13 @@ impl<R: Routable + Default> Navigator<R> {
         {
             let window = web_sys::window().unwrap();
             let history = window.history().unwrap();
-            let _ = history.replace_state_with_url(&wasm_bindgen::JsValue::NULL, "", Some(&path));
+            let _ = history.replace_state_with_url(&wasm_bindgen::JsValue::NULL, "", Some(&_path));
         }
 
         *self.current_route.borrow_mut() = target;
     }
 
-    pub fn restore_scroll(&self, path: &str) {
+    pub fn restore_scroll(&self, #[allow(unused_variables)] path: &str) {
         #[cfg(target_arch = "wasm32")]
         {
             if let Some((x, y)) = self.scroll_positions.borrow().get(path) {
