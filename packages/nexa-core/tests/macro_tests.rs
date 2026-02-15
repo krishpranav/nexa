@@ -1,4 +1,4 @@
-use nexa_core::*;
+// use nexa_core::*;
 
 #[test]
 fn test_macro_basic_element() {

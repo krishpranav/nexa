@@ -3,11 +3,11 @@ use nexa_ssr::*;
 
 #[tokio::test]
 async fn test_ssr_streaming_order() {
-    let arena = VDomArena::new();
-    let renderer = Renderer::new(&arena);
+    let _arena = VDomArena::new();
+    let _renderer = Renderer::new(&_arena);
 
     // Using VirtualNode::text as a static method if available or constructor
-    let node = VirtualNode::Text(Text {
+    let _node = VirtualNode::Text(Text {
         text: "test".to_string(),
         parent: None,
     });
