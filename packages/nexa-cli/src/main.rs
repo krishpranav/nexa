@@ -5,6 +5,11 @@ use log::{error, info, warn};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+mod build_wasm;
+mod dev_server;
+
+use notify::{RecursiveMode, Watcher};
+use std::sync::mpsc::channel;
 
 #[derive(Parser)]
 #[command(name = "nexa")]
@@ -69,7 +74,7 @@ async fn main() -> Result<()> {
     match cli.command {
         Commands::New { name, template } => create_new_project(&name, template)?,
         Commands::Build { release, target } => build_project(release, target)?,
-        Commands::Dev { watch } => run_dev(watch)?,
+        Commands::Dev { watch } => run_dev(watch).await?,
         Commands::Serve { port, dir } => serve_dir(port, &dir).await?,
         Commands::Scan => {
             let root = scan_workspace()?;
@@ -173,7 +178,71 @@ fn build_project(release: bool, target: Option<String>) -> Result<()> {
     Ok(())
 }
 
-fn run_dev(watch: bool) -> Result<()> {
+async fn run_dev(watch: bool) -> Result<()> {
+    // Detect if this is a web project (has index.html)
+    if Path::new("index.html").exists() {
+        info!("Nexa Web Project detected.");
+
+        // 1. Check Requirements
+        build_wasm::check_requirements()?;
+
+        // 2. Initial Build
+        let metadata = MetadataCommand::new()
+            .exec()
+            .context("Failed to read cargo metadata")?;
+        let package = metadata
+            .packages
+            .iter()
+            .find(|p| p.manifest_path.parent().unwrap() == std::env::current_dir().unwrap())
+            .context("Could not find package for current directory")?;
+
+        let project_name = &package.name;
+
+        info!("Building {}...", project_name);
+        build_wasm::build_project(false)?;
+        build_wasm::run_bindgen(false, project_name)?;
+        build_wasm::generate_dist(project_name)?;
+
+        info!("Build successful!");
+
+        // 3. Start Server
+        let port = 8080;
+        tokio::spawn(async move {
+            if let Err(e) = dev_server::serve(port).await {
+                error!("Server error: {}", e);
+            }
+        });
+
+        if !watch {
+            tokio::signal::ctrl_c().await?;
+            return Ok(());
+        }
+
+        // 4. Watch Loop
+        let (tx, rx) = channel();
+        let mut watcher = notify::recommended_watcher(tx)?;
+        watcher.watch(Path::new("src"), RecursiveMode::Recursive)?;
+        watcher.watch(Path::new("index.html"), RecursiveMode::NonRecursive)?;
+
+        info!("Watching for changes...");
+
+        for res in rx {
+            match res {
+                Ok(_) => {
+                    info!("Change detected. Rebuilding...");
+                    match build_rebuild(project_name) {
+                        Ok(_) => info!("Rebuild successful!"),
+                        Err(e) => error!("Rebuild failed: {}", e),
+                    }
+                }
+                Err(e) => error!("Watch error: {}", e),
+            }
+        }
+
+        return Ok(());
+    }
+
+    // Legacy/Native handling
     info!("Starting dev server (watch={})...", watch);
     if watch {
         // Check for cargo-watch
@@ -186,6 +255,14 @@ fn run_dev(watch: bool) -> Result<()> {
     } else {
         Command::new("cargo").arg("run").status()?;
     }
+    Ok(())
+}
+
+fn build_rebuild(project_name: &str) -> Result<()> {
+    // Only rebuild, do not crash server
+    build_wasm::build_project(false)?;
+    build_wasm::run_bindgen(false, project_name)?;
+    build_wasm::generate_dist(project_name)?;
     Ok(())
 }
 
