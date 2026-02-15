@@ -46,7 +46,7 @@ impl DesktopApp {
         self
     }
 
-    pub fn run(self) {
+    pub fn run(self, root_fn: fn() -> nexa_core::NodeId) {
         env_logger::init();
         info!("Starting Nexa Desktop...");
 
@@ -82,6 +82,7 @@ impl DesktopApp {
 
         // Initialize Runtime
         let mut runtime = Runtime::new();
+        runtime.mount("App", root_fn);
         let _ipc = IpcChannel {};
 
         // Initialize GPU Renderer
