@@ -1,5 +1,5 @@
 use nexa_core::{Mutation, Runtime};
-use nexa_scheduler::Scheduler;
+use nexa_scheduler::LocalScheduler;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -8,7 +8,7 @@ use web_sys::{Document, Element, Event, Node};
 
 #[wasm_bindgen]
 pub struct WebApp {
-    runtime: Rc<RefCell<Runtime<Scheduler>>>,
+    runtime: Rc<RefCell<Runtime<LocalScheduler>>>,
     interpreter: Rc<RefCell<WebInterpreter>>,
 }
 
@@ -17,11 +17,11 @@ struct WebInterpreter {
     nodes: HashMap<u64, Node>,
     event_listeners: HashMap<u64, Vec<Closure<dyn FnMut(Event)>>>,
     root_id: Option<u64>,
-    runtime: Rc<RefCell<Runtime<Scheduler>>>,
+    runtime: Rc<RefCell<Runtime<LocalScheduler>>>,
 }
 
 impl WebInterpreter {
-    fn new(document: Document, runtime: Rc<RefCell<Runtime<Scheduler>>>) -> Self {
+    fn new(document: Document, runtime: Rc<RefCell<Runtime<LocalScheduler>>>) -> Self {
         Self {
             document,
             nodes: HashMap::new(),
@@ -199,7 +199,7 @@ impl WebApp {
         let window = web_sys::window().unwrap();
         let document = window.document().unwrap();
 
-        let scheduler = Scheduler::new();
+        let scheduler = LocalScheduler::new();
         let runtime = Rc::new(RefCell::new(Runtime::new(scheduler)));
         let interpreter = Rc::new(RefCell::new(WebInterpreter::new(document, runtime.clone())));
 
