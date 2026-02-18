@@ -1,17 +1,18 @@
 use log::info;
 use nexa_core::Runtime;
 use nexa_renderer_gpu::GpuRenderer;
-use std::sync::Mutex;
+use nexa_scheduler::Scheduler;
+use std::cell::RefCell;
 
 // Simple Thread-safe state container
 pub struct MobileApp {
-    pub runtime: Runtime,
+    pub runtime: Runtime<Scheduler>,
     pub renderer: Option<GpuRenderer>,
     pub suspended: bool,
 }
 
-lazy_static::lazy_static! {
-    pub static ref APP_INSTANCE: Mutex<Option<MobileApp>> = Mutex::new(None);
+thread_local! {
+    pub static APP_INSTANCE: RefCell<Option<MobileApp>> = RefCell::new(None);
 }
 
 // Resource loading abstraction
@@ -40,16 +41,20 @@ pub mod android {
 
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn Java_com_nexa_NexaBridge_onResume(_env: JNIEnv, _class: JClass) {
-        if let Some(app) = APP_INSTANCE.lock().unwrap().as_mut() {
-            app.suspended = false;
-        }
+        APP_INSTANCE.with(|app| {
+            if let Some(app) = app.borrow_mut().as_mut() {
+                app.suspended = false;
+            }
+        });
     }
 
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn Java_com_nexa_NexaBridge_onPause(_env: JNIEnv, _class: JClass) {
-        if let Some(app) = APP_INSTANCE.lock().unwrap().as_mut() {
-            app.suspended = true;
-        }
+        APP_INSTANCE.with(|app| {
+            if let Some(app) = app.borrow_mut().as_mut() {
+                app.suspended = true;
+            }
+        });
     }
 
     #[unsafe(no_mangle)]
@@ -65,39 +70,46 @@ pub mod ios {
 
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn nexa_mobile_init() {
-        let mut app = APP_INSTANCE.lock().unwrap();
-        *app = Some(MobileApp {
-            runtime: Runtime::new(),
-            renderer: None,
-            suspended: false,
+        APP_INSTANCE.with(|app| {
+            *app.borrow_mut() = Some(MobileApp {
+                runtime: Runtime::new(Scheduler::new()),
+                renderer: None,
+                suspended: false,
+            });
         });
     }
 
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn nexa_mobile_on_touch(x: f64, y: f64, phase: i32) {
-        if let Some(_app) = APP_INSTANCE.lock().unwrap().as_mut() {
-            // Translate touch to Nexa event
-            info!("Touch event: ({}, {}) phase: {}", x, y, phase);
-        }
+        APP_INSTANCE.with(|app| {
+            if let Some(_app) = app.borrow_mut().as_mut() {
+                // Translate touch to Nexa event
+                info!("Touch event: ({}, {}) phase: {}", x, y, phase);
+            }
+        });
     }
 
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn nexa_mobile_on_orientation_change(width: i32, height: i32) {
-        if let Some(app) = APP_INSTANCE.lock().unwrap().as_mut() {
-            if let Some(_r) = app.renderer.as_mut() {
-                info!("Orientation change: {}x{}", width, height);
+        APP_INSTANCE.with(|app| {
+            if let Some(app) = app.borrow_mut().as_mut() {
+                if let Some(_r) = app.renderer.as_mut() {
+                    info!("Orientation change: {}x{}", width, height);
+                }
             }
-        }
+        });
     }
 
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn nexa_mobile_update() {
-        if let Some(app) = APP_INSTANCE.lock().unwrap().as_mut() {
-            if !app.suspended {
-                app.runtime.update();
-                let _mutations = app.runtime.drain_mutations();
+        APP_INSTANCE.with(|app| {
+            if let Some(app) = app.borrow_mut().as_mut() {
+                if !app.suspended {
+                    app.runtime.update();
+                    let _mutations = app.runtime.drain_mutations();
+                }
             }
-        }
+        });
     }
 }
 
@@ -107,7 +119,7 @@ pub mod host_stub {
     use super::*;
     pub fn verify() {
         let _ = MobileApp {
-            runtime: Runtime::new(),
+            runtime: Runtime::new(Scheduler::new()),
             renderer: None,
             suspended: false,
         };

@@ -11,6 +11,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [dependencies]
 nexa-core = { path = "../nexa-core", version = "0.1.0" }
 nexa-renderer-gpu = { path = "../nexa-renderer-gpu", version = "0.1.0" }
+nexa-scheduler = { path = "../nexa-scheduler", version = "0.1.0" }
 raw-window-handle = "0.5" # Match winit/wgpu
 winit = { version = "0.29", features = ["rwh_05", "android-native-activity"] }
 log = "0.4"
