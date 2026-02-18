@@ -1,12 +1,12 @@
 use log::info;
 use nexa_core::Runtime;
 use nexa_renderer_gpu::GpuRenderer;
-use nexa_scheduler::Scheduler;
+use nexa_scheduler::LocalScheduler;
 use std::cell::RefCell;
 
 // Simple Thread-safe state container
 pub struct MobileApp {
-    pub runtime: Runtime<Scheduler>,
+    pub runtime: Runtime<LocalScheduler>,
     pub renderer: Option<GpuRenderer>,
     pub suspended: bool,
 }
@@ -72,7 +72,7 @@ pub mod ios {
     pub unsafe extern "C" fn nexa_mobile_init() {
         APP_INSTANCE.with(|app| {
             *app.borrow_mut() = Some(MobileApp {
-                runtime: Runtime::new(Scheduler::new()),
+                runtime: Runtime::new(LocalScheduler::new()),
                 renderer: None,
                 suspended: false,
             });
@@ -119,7 +119,7 @@ pub mod host_stub {
     use super::*;
     pub fn verify() {
         let _ = MobileApp {
-            runtime: Runtime::new(Scheduler::new()),
+            runtime: Runtime::new(LocalScheduler::new()),
             renderer: None,
             suspended: false,
         };
