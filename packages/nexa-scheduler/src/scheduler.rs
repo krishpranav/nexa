@@ -11,6 +11,7 @@ pub struct LocalScheduler {
     start_time: Instant,
     // Preventing recursive ticks if needed
     in_tick: RefCell<bool>,
+    dirty_signals: RefCell<Vec<nexa_signals::SignalId>>,
 }
 
 impl Default for LocalScheduler {
@@ -27,6 +28,7 @@ impl LocalScheduler {
             layout_effects: TaskQueue::new(),
             start_time: Instant::now(),
             in_tick: RefCell::new(false),
+            dirty_signals: RefCell::new(Vec::new()),
         }
     }
 
@@ -89,5 +91,18 @@ impl Scheduler for LocalScheduler {
 
     fn now(&self) -> f64 {
         self.start_time.elapsed().as_secs_f64() * 1000.0
+    }
+}
+
+impl nexa_signals::Scheduler for LocalScheduler {
+    fn schedule(&mut self, dirty: impl IntoIterator<Item = nexa_signals::SignalId>) {
+        self.dirty_signals.borrow_mut().extend(dirty);
+    }
+
+    fn run(&mut self, _graph: &nexa_signals::Graph) -> Vec<nexa_signals::SignalId> {
+        let mut signals = self.dirty_signals.borrow_mut();
+        let res = signals.clone();
+        signals.clear();
+        res
     }
 }
