@@ -11,4 +11,11 @@ slotmap = "1.0"
 smallvec = "1.0"
 rustc-hash = "1.1"
 tracing = "0.1"
-nexa-core = { path = "../nexa-core", version = "0.1.0" }
+futures-task = "0.3"
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "scheduler_benchmark"
+harness = false
