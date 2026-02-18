@@ -2,6 +2,7 @@ use arboard::Clipboard;
 use log::{error, info};
 use nexa_core::Runtime;
 use nexa_renderer_gpu::{GpuRenderer, scene::Scene};
+use nexa_scheduler::Scheduler;
 use rfd::FileDialog;
 use std::sync::Arc;
 use tray_icon::TrayIconBuilder;
@@ -81,7 +82,7 @@ impl DesktopApp {
         };
 
         // Initialize Runtime
-        let mut runtime = Runtime::new();
+        let mut runtime = Runtime::new(Scheduler::new());
         runtime.mount("App", root_fn);
         let _ipc = IpcChannel {};
 
