@@ -3,7 +3,7 @@ use crate::mutations::Mutation;
 use crate::scheduler::Scheduler;
 use crate::vdom::{NodeId, VDomArena, VirtualNode, set_active_arena};
 use nexa_signals::NodeType;
-use nexa_signals::context::{allocate_node, pop_observer, push_observer};
+use nexa_signals::dependency::{allocate_node, execute, pop_observer, push_observer, take_dirty};
 
 use slotmap::{Key, SlotMap, new_key_type};
 use std::collections::HashMap;
@@ -81,7 +81,7 @@ impl<S: Scheduler> Runtime<S> {
         self.root_fn = Some(root_fn);
 
         // Create a signal for the root effect/computation
-        let effect_id = allocate_node(NodeType::Effect, None);
+        let effect_id = allocate_node(NodeType::Effect);
         self.root_effect = Some(effect_id);
 
         let _scope_id = self.scopes.insert(Scope {
@@ -164,7 +164,7 @@ impl<S: Scheduler> Runtime<S> {
         self.phase = RenderPhase::Begin;
 
         // 1. Gather dirty signals
-        let dirty = nexa_signals::context::GRAPH.with(|g| g.borrow_mut().take_dirty());
+        let dirty = take_dirty();
 
         if dirty.is_empty() {
             return;
@@ -177,10 +177,13 @@ impl<S: Scheduler> Runtime<S> {
 
         // 3. Run Scheduler
         self.phase = RenderPhase::Diff;
-        let queue = nexa_signals::context::GRAPH.with(|g| {
+        let queue = nexa_signals::dependency::GRAPH.with(|g| {
             let graph = g.borrow();
             self.scheduler.run(&graph)
         });
+
+        // Execute signal updates
+        nexa_signals::dependency::execute(queue.clone());
 
         for sig in queue {
             // Re-render components dependent on sig
