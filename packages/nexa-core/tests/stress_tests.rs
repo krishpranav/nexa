@@ -1,9 +1,9 @@
-use nexa_scheduler::*;
+use nexa_scheduler::LocalScheduler;
 use nexa_signals::dependency::{execute, take_dirty, with_graph};
 use nexa_signals::*;
 use std::time::Instant;
 
-fn run_scheduler(scheduler: &mut Scheduler) {
+fn run_scheduler(scheduler: &mut LocalScheduler) {
     let dirty = take_dirty();
     if !dirty.is_empty() {
         scheduler.schedule(dirty);

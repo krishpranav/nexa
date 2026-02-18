@@ -1,4 +1,4 @@
-use nexa_scheduler::*;
+use nexa_scheduler::LocalScheduler;
 use nexa_signals::dependency::{execute, with_graph};
 use nexa_signals::*;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -30,7 +30,7 @@ fn test_memory_leak_detection() {
     }
 
     // After scope, all should be dropped
-    let mut scheduler = Scheduler::new();
+    let mut scheduler = LocalScheduler::new(); // Drop scheduler at end
     let order = with_graph(|g: &Graph| scheduler.run(g));
     execute(order);
 
