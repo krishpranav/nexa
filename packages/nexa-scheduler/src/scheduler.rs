@@ -165,3 +165,13 @@ impl Scheduler {
         sorted_order
     }
 }
+
+impl nexa_core::Scheduler for Scheduler {
+    fn schedule(&mut self, dirty: impl IntoIterator<Item = SignalId>) {
+        self.schedule(dirty)
+    }
+
+    fn run(&mut self, graph: &Graph) -> Vec<SignalId> {
+        self.run(graph)
+    }
+}
