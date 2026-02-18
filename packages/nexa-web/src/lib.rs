@@ -1,4 +1,5 @@
 use nexa_core::{Mutation, Runtime};
+use nexa_scheduler::Scheduler;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -7,7 +8,7 @@ use web_sys::{Document, Element, Event, Node};
 
 #[wasm_bindgen]
 pub struct WebApp {
-    runtime: Rc<RefCell<Runtime>>,
+    runtime: Rc<RefCell<Runtime<Scheduler>>>,
     interpreter: Rc<RefCell<WebInterpreter>>,
 }
 
@@ -16,11 +17,11 @@ struct WebInterpreter {
     nodes: HashMap<u64, Node>,
     event_listeners: HashMap<u64, Vec<Closure<dyn FnMut(Event)>>>,
     root_id: Option<u64>,
-    runtime: Rc<RefCell<Runtime>>,
+    runtime: Rc<RefCell<Runtime<Scheduler>>>,
 }
 
 impl WebInterpreter {
-    fn new(document: Document, runtime: Rc<RefCell<Runtime>>) -> Self {
+    fn new(document: Document, runtime: Rc<RefCell<Runtime<Scheduler>>>) -> Self {
         Self {
             document,
             nodes: HashMap::new(),
@@ -92,6 +93,37 @@ impl WebInterpreter {
                         }
                     }
                     self.event_listeners.remove(&id);
+                }
+                Mutation::InsertBefore { id, m } => {
+                    // id is the reference node (next sibling)
+                    let ref_node = if let Some(n) = self.nodes.get(&id) {
+                        n
+                    } else {
+                        tracing::error!("Reference node {} not found for InsertBefore", id);
+                        continue;
+                    };
+
+                    if let Some(parent) = ref_node.parent_node() {
+                        for child_id in m {
+                            if let Some(child) = self.nodes.get(&child_id) {
+                                parent.insert_before(child, Some(ref_node)).unwrap();
+                            } else {
+                                tracing::error!(
+                                    "Child node {} not found for InsertBefore",
+                                    child_id
+                                );
+                            }
+                        }
+                    } else {
+                        tracing::error!("Reference node {} has no parent", id);
+                    }
+                }
+                Mutation::RemoveAttribute { name, id } => {
+                    if let Some(node) = self.nodes.get(&id) {
+                        if let Some(el) = node.dyn_ref::<Element>() {
+                            el.remove_attribute(&name).unwrap();
+                        }
+                    }
                 }
                 _ => {
                     // Handle other mutations as needed
@@ -167,7 +199,8 @@ impl WebApp {
         let window = web_sys::window().unwrap();
         let document = window.document().unwrap();
 
-        let runtime = Rc::new(RefCell::new(Runtime::new()));
+        let scheduler = Scheduler::new();
+        let runtime = Rc::new(RefCell::new(Runtime::new(scheduler)));
         let interpreter = Rc::new(RefCell::new(WebInterpreter::new(document, runtime.clone())));
 
         let app = Self {
