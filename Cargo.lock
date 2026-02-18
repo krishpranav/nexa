@@ -2639,6 +2639,7 @@ dependencies = [
  "log",
  "nexa-core",
  "nexa-renderer-gpu",
+ "nexa-scheduler",
  "rfd",
  "tray-icon",
  "wgpu",
@@ -2695,6 +2696,7 @@ dependencies = [
  "ndk-context",
  "nexa-core",
  "nexa-renderer-gpu",
+ "nexa-scheduler",
  "raw-window-handle 0.5.2",
  "winit",
 ]
@@ -2744,6 +2746,7 @@ dependencies = [
 name = "nexa-scheduler"
 version = "0.1.0"
 dependencies = [
+ "nexa-core",
  "nexa-signals",
  "rustc-hash",
  "slotmap",
@@ -2766,6 +2769,7 @@ version = "0.1.0"
 dependencies = [
  "futures",
  "nexa-core",
+ "nexa-scheduler",
 ]
 
 [[package]]
@@ -2775,6 +2779,7 @@ dependencies = [
  "console_error_panic_hook",
  "js-sys",
  "nexa-core",
+ "nexa-scheduler",
  "tracing",
  "wasm-bindgen",
  "web-sys",
