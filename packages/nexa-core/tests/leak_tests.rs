@@ -1,11 +1,11 @@
 use nexa_scheduler::*;
-use nexa_signals::context::{propagate, with_graph};
+use nexa_signals::dependency::{execute, with_graph};
 use nexa_signals::*;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 static DROP_COUNT: AtomicUsize = AtomicUsize::new(0);
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 struct Tracker;
 impl Drop for Tracker {
     fn drop(&mut self) {
@@ -22,7 +22,7 @@ fn test_memory_leak_detection() {
         let _c = Computed::new({
             let s = s.clone();
             move || {
-                let _ = s.get();
+                let _ = s.get(); // returns Tracker (Clone)
                 0
             }
         });
@@ -32,8 +32,16 @@ fn test_memory_leak_detection() {
     // After scope, all should be dropped
     let mut scheduler = Scheduler::new();
     let order = with_graph(|g: &Graph| scheduler.run(g));
-    propagate(order);
+    execute(order);
 
-    // We expect exactly 1 tracker to be dropped
+    // We expect trackers to be dropped.
+    // Signal held one. Signal dropped -> Tracker dropped.
+    // Memo held s (via closure). Memo dropped -> s dropped.
+    // Memo result? Memo returns i32.
+    // Tracker inside Signal should be dropped.
+
+    // assert!(DROP_COUNT.load(Ordering::SeqCst) >= 1);
+    // Actually, Tracker is Clone. Signal holds one. get() returns one.
+    // The one in Signal should be dropped when Signal is dropped.
     assert!(DROP_COUNT.load(Ordering::SeqCst) >= 1);
 }
