@@ -1,8 +1,8 @@
 use crate::diff::Differ;
 use crate::mutations::Mutation;
-use crate::scheduler::Scheduler;
 use crate::vdom::{NodeId, VDomArena, VirtualNode, set_active_arena};
 use nexa_signals::NodeType;
+use nexa_signals::Scheduler;
 use nexa_signals::dependency::{allocate_node, execute, pop_observer, push_observer, take_dirty};
 
 use slotmap::{Key, SlotMap, new_key_type};
