@@ -53,6 +53,10 @@ pub enum Mutation {
         id: u64,
         ns: Option<String>,
     },
+    RemoveAttribute {
+        name: String,
+        id: u64,
+    },
     SetText {
         value: String,
         id: u64,
@@ -71,4 +75,9 @@ pub enum Mutation {
     PushRoot {
         id: u64,
     },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MutationBatch {
+    pub mutations: Vec<Mutation>,
 }
