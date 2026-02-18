@@ -12,4 +12,6 @@ proc-macro = true
 quote = "1.0"
 syn = { version = "2.0", features = ["full"] }
 proc-macro2 = "1.0"
-# nexa-core dependency removed to avoid circular dependency (rsx macro generates code that refers to nexa-core, but doesn't link to it)
+[dev-dependencies]
+nexa-core = { path = "../nexa-core", version = "0.1.0" }
+smallvec = "1.0"
