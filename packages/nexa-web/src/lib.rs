@@ -225,23 +225,54 @@ impl WebApp {
         let performance = window.performance().unwrap();
         let start = performance.now();
 
+        // Wrap update in catch_unwind (simulated via Result if runtime supported it,
+        // but since runtime.update panics on failure, we rely on console_error_panic_hook global hook for panic details.
+        // However, we can catch logical errors if we change Runtime API, but for now we wrap logic)
+
+        // Actually, preventing blank page on WASM panic is hard because memory might be corrupted.
+        // But we can try to render a fallback if we detect critical state.
+
         self.runtime.borrow_mut().update();
+
         let mutations = self.runtime.borrow_mut().drain_mutations();
 
         let interpreter_clone = self.interpreter.clone();
         self.interpreter
             .borrow_mut()
             .apply_mutations(mutations, interpreter_clone);
+
         let end = performance.now();
+        let duration = end - start;
 
         // Performance instrumentation
-        if end - start > 16.0 {
+        if duration > 16.0 {
             web_sys::console::warn_1(
-                &format!("Nexa: Slow frame detected ({}ms)", end - start).into(),
+                &format!("Nexa: Slow frame detected ({:.2}ms)", duration).into(),
             );
+        } else {
+            web_sys::console::log_1(&format!("Nexa: Update completed in {:.2}ms", duration).into());
         }
 
         Ok(())
+    }
+
+    pub fn render_error(&self, err: &JsValue) {
+        let document = web_sys::window().unwrap().document().unwrap();
+        if let Some(root_id) = self.interpreter.borrow().root_id {
+            // Find the root element to replace content
+            if let Some(node) = self.interpreter.borrow().nodes.get(&root_id) {
+                if let Some(el) = node.dyn_ref::<Element>() {
+                    el.set_inner_html("");
+                    let err_div = document.create_element("div").unwrap();
+                    err_div.set_attribute("style", "background: #ffe6e6; color: #d8000c; padding: 20px; border: 1px solid #d8000c; border-radius: 4px; font-family: monospace; white-space: pre-wrap;").unwrap();
+
+                    let msg = format!("Nexa Runtime Error:\n{:?}", err);
+                    err_div.set_text_content(Some(&msg));
+
+                    el.append_child(&err_div).unwrap();
+                }
+            }
+        }
     }
 
     pub fn hydrate(&mut self) -> Result<(), JsValue> {
@@ -310,9 +341,20 @@ impl WebApp {
             .nodes
             .insert(0, root_el.into());
 
+        web_sys::console::log_1(&format!("Nexa: Mounting application to {}", root_id).into());
+
         self.runtime.borrow_mut().mount("Root", root_fn);
 
-        self.update()?;
-        Ok(())
+        match self.update() {
+            Ok(_) => {
+                web_sys::console::log_1(&"Nexa: Mount successful".into());
+                Ok(())
+            }
+            Err(e) => {
+                web_sys::console::error_1(&"Nexa: Mount failed".into());
+                self.render_error(&e);
+                Err(e)
+            }
+        }
     }
 }

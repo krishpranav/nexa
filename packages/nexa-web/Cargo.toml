@@ -16,6 +16,12 @@ nexa-scheduler = { path = "../nexa-scheduler", version = "0.1.0" }
 console_error_panic_hook = { version = "0.1.7", optional = true }
 tracing = "0.1"
 
+[dev-dependencies]
+wasm-bindgen-test = "0.3"
+nexa-rsx = { path = "../nexa-rsx" }
+nexa-signals = { path = "../nexa-signals" }
+smallvec = "1.0"
+
 [dependencies.web-sys]
 version = "0.3"
 features = [
