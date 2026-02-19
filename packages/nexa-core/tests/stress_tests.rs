@@ -15,7 +15,7 @@ fn run_scheduler(scheduler: &mut LocalScheduler) {
 
 #[test]
 fn test_stress_10k_signals() {
-    let mut scheduler = Scheduler::new();
+    let mut scheduler = LocalScheduler::new();
     let signals: Vec<_> = (0..10000).map(|i| Signal::new(i)).collect();
 
     let sum = Computed::new({
@@ -44,7 +44,7 @@ fn test_stress_10k_signals() {
 
 #[test]
 fn test_stress_deep_graph() {
-    let mut scheduler = Scheduler::new();
+    let mut scheduler = LocalScheduler::new();
     let root = Signal::new(0);
     let mut current = Computed::new({
         let root = root.clone();

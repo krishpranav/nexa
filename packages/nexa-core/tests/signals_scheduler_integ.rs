@@ -15,7 +15,7 @@ fn run_scheduler(scheduler: &mut LocalScheduler) {
 
 #[test]
 fn test_signal_propagation_simple() {
-    let mut scheduler = Scheduler::new();
+    let mut scheduler = LocalScheduler::new();
     let s = Signal::new(10);
     let c = Computed::new({
         let s = s.clone();
@@ -30,7 +30,7 @@ fn test_signal_propagation_simple() {
 
 #[test]
 fn test_topological_scheduling_diamond() {
-    let mut scheduler = Scheduler::new();
+    let mut scheduler = LocalScheduler::new();
     let counter = Arc::new(Mutex::new(0));
 
     let s = Signal::new(1);
