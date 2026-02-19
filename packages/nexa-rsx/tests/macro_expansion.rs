@@ -108,3 +108,27 @@ fn test_control_flow() {
     // 1 div + 2 spans = 3 nodes
     assert_eq!(nodes.len(), 3);
 }
+
+#[test]
+fn test_key_support() {
+    let mut arena = nexa_core::VDomArena::new();
+    let nodes = unsafe {
+        nexa_core::set_active_arena(&mut arena, || {
+            rsx! {
+                div { key: "my-key" }
+            }
+        })
+    };
+
+    assert_eq!(nodes.len(), 1);
+    let id = nodes[0];
+    let node = arena.nodes.get(id).unwrap();
+
+    if let VirtualNode::Element(el) = node {
+        assert_eq!(el.key, Some("my-key".to_string()));
+        // key should NOT be in props
+        assert!(!el.props.iter().any(|p| p.name == "key"));
+    } else {
+        panic!("Expected element");
+    }
+}
