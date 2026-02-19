@@ -244,3 +244,7 @@ pub fn create_memo<T: PartialEq + 'static, F: Fn() -> T + 'static>(f: F) -> Memo
 pub fn create_effect<F: Fn() + 'static>(f: F) -> Effect {
     Effect::new(f)
 }
+
+pub fn create_signal<T: PartialEq + 'static>(value: T) -> Signal<T> {
+    Signal::new(value)
+}
