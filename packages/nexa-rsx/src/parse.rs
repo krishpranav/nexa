@@ -64,6 +64,8 @@ impl Parse for Element {
         let mut attributes = Vec::new();
         let mut children = Vec::new();
 
+        let mut key = None;
+
         if input.peek(syn::token::Brace) {
             let content;
             braced!(content in input);
@@ -72,25 +74,42 @@ impl Parse for Element {
                 // if it looks like key: value, it's an attribute
                 // if it looks like "string", { block }, or another element, it's a child.
 
-                // Peek for Attribute: Ident followed by : or just Ident (shorthand for attr?) or Ident with no children following?
-                // Ambiguity: `div { class }` -> attribute shorthand or text?
-                // `div { child }` -> child element?
-
-                // To keep it simple:
-                // Attributes MUST be Key: Value or Key="Value" (if allowed)
-                // Children are everything else.
-
                 let fork = content.fork();
                 if let Ok(ident) = fork.parse::<Ident>() {
                     if fork.peek(Token![:]) {
-                        // Clearly an attribute
-                        attributes.push(content.parse()?);
+                        // Key: Value
+                        let name = ident;
+                        content.parse::<Ident>()?; // consume name
+                        content.parse::<Token![:]>()?;
+
+                        // Check if it is "key"
+                        if name == "key" {
+                            let val: Expr = if content.peek(LitStr) {
+                                let lit: LitStr = content.parse()?;
+                                syn::parse2(quote::quote! { #lit }).unwrap()
+                            } else {
+                                content.parse()?
+                            };
+                            key = Some(val);
+                        } else {
+                            // Normal attribute
+                            let val = if content.peek(LitStr) {
+                                AttributeValue::Lit(content.parse()?)
+                            } else {
+                                AttributeValue::Expr(content.parse()?)
+                            };
+                            attributes.push(Attribute { name, value: val });
+                        }
                     } else if fork.is_empty() || fork.peek(Token![,]) {
-                        // Single Ident followed by comma or end: Shorthand attribute
-                        // div { class } -> class: class
-                        attributes.push(content.parse()?);
+                        // Shorthand
+                        let name = ident;
+                        content.parse::<Ident>()?; // consume
+                        attributes.push(Attribute {
+                            name,
+                            value: AttributeValue::Shorthand,
+                        });
                     } else {
-                        // Ident followed by something else (e.g. brace). Child element.
+                        // Child element
                         children.push(content.parse()?);
                     }
                 } else if content.peek(LitStr)
@@ -98,10 +117,8 @@ impl Parse for Element {
                     || content.peek(Token![if])
                     || content.peek(Token![for])
                 {
-                    // Text or Control Flow
                     children.push(content.parse()?);
                 } else {
-                    // Fallback to node parse
                     children.push(content.parse()?);
                 }
 
@@ -115,6 +132,7 @@ impl Parse for Element {
             name,
             attributes,
             children,
+            key,
             _span: span,
         })
     }

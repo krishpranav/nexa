@@ -110,6 +110,12 @@ impl ToTokens for Element {
             quote! { nexa_core::NodeMetadata::default() }
         };
 
+        let key = if let Some(k) = &self.key {
+             quote! { Some(#k.to_string()) }
+        } else {
+             quote! { None }
+        };
+
         tokens.extend(quote! {
             nexa_core::get_active_arena(|arena| {
                 // Generate children
@@ -127,7 +133,7 @@ impl ToTokens for Element {
                         listeners: smallvec::smallvec![ #(#listeners),* ],
                         children: __el_nodes,
                         parent: None,
-                        key: None,
+                        key: #key,
                     }),
                     #metadata
                 );

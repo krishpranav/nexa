@@ -17,6 +17,7 @@ pub struct Element {
     pub name: Ident,
     pub attributes: Vec<Attribute>,
     pub children: Vec<RsxNode>,
+    pub key: Option<Expr>,
     pub _span: Span,
 }
 

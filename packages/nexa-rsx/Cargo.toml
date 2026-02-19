@@ -15,3 +15,4 @@ proc-macro2 = "1.0"
 [dev-dependencies]
 nexa-core = { path = "../nexa-core", version = "0.1.0" }
 smallvec = "1.0"
+trybuild = "1.0"
