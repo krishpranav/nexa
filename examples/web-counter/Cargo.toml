@@ -1,19 +1,21 @@
 [package]
 name = "web-counter"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
-
+[lib]
+crate-type = ["cdylib"]
 
 [dependencies]
 nexa-core = { path = "../../packages/nexa-core" }
-nexa-signals = { path = "../../packages/nexa-signals" }
 nexa-web = { path = "../../packages/nexa-web" }
 nexa-rsx = { path = "../../packages/nexa-rsx" }
-console_error_panic_hook = "0.1"
-log = "0.4"
+nexa-signals = { path = "../../packages/nexa-signals" }
 wasm-bindgen = "0.2"
-wasm-logger = "0.2"
-smallvec = "1.11"
-tracing = "0.1"
-tracing-wasm = "0.2"
+console_error_panic_hook = "0.1"
+smallvec = "1.0"
+
+# Enable optimizations for WASM
+[profile.release]
+lto = true
+opt-level = 'z'
